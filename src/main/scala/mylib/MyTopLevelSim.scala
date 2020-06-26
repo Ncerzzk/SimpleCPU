@@ -6,11 +6,48 @@ import spinal.core.sim._
 
 import scala.util.Random
 
+object RomTest {
+  def main(args: Array[String]): Unit = {
+    SimConfig.withWave.compile(new InstRom).doSim{ dut =>
+      //Simulation code here
+      dut.clockDomain.forkStimulus(period = 10)
+
+      for(i <- 0 to 3){
+        dut.io.addr #= i
+        dut.io.en #= true
+        dut.clockDomain.waitSampling()
+      }
+    }
+  }
+}
+
+object SocTest{
+  def main(args:Array[String]):Unit = {
+    SimConfig.withWave.compile(new SOC).doSim{dut=>
+      dut.clockDomain.forkStimulus(period = 10)
+      dut.clockDomain.deassertReset()
+
+      dut.clockDomain.assertReset()
+      sleep(10)
+      dut.clockDomain.risingEdge()
+      sleep(10)
+      dut.clockDomain.deassertReset()
+      dut.clockDomain.fallingEdge()
+      for(i <- 0 to 10){
+        dut.clockDomain.waitSampling()
+      }
+
+    }
+  }
+}
+
+
 
 //MyTopLevel's testbench
+/*
 object MyTopLevelSim {
   def main(args: Array[String]) {
-    SimConfig.withWave.doSim(new MyTopLevel){dut =>
+    SimConfig.withWave.doSim(new TopLevel){dut =>
       //Fork a process to generate the reset and the clock on the dut
       dut.clockDomain.forkStimulus(period = 10)
 
@@ -35,4 +72,4 @@ object MyTopLevelSim {
       }
     }
   }
-}
+}*/
