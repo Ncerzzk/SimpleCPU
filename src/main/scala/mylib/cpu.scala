@@ -76,6 +76,7 @@ class BusInterface extends  Component{
 }
 
 class CPU extends Component  with BusMasterContain {
+
   val io = new Bundle{
     val inst = in Bits(GlobalConfig.dataBitsWidth)
     val romEn = out Bool
@@ -126,7 +127,7 @@ class SOC extends Component {
   val cpu = new CPU
   val rom = new InstRom
 
-  romInitTestBack2gap()
+  romInitTestAnd0gap()
   rom.io.inst<> cpu.io.inst
   rom.io.en <> cpu.io.romEn
   rom.io.addr<> cpu.io.romAddr
@@ -143,6 +144,11 @@ class SOC extends Component {
 
   def romInitTestBack2gap()={
     val romInitVal=List(B(0),B("32'h34011100"),B(0),B(0),B("32'h34220011"))++List.fill(11)(B(0))
+    rom.init(romInitVal)
+  }
+
+  def romInitTestAnd0gap()={
+    val romInitVal=List(B(0),B("32'h34011100"),B("32'h34220011"),B("32'h30410010"),B("32'h38221000"))++List.fill(11)(B(0))
     rom.init(romInitVal)
   }
 }
