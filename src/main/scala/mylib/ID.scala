@@ -52,7 +52,13 @@ class ID extends Component{
   val op3 = lastStage.inst.take(6)
   val op4 = lastStage.inst(16 to 20)
 
-  val imm = B(0,16 bits) ## lastStage.inst.take(16)    // 立即数
+  var imm = Bits(GlobalConfig.dataBitsWidth)
+  when(idOut.op===OpEnum.LOGIC.asBits.resized) {
+    //val imm = B(0, 16 bits) ## lastStage.inst.take(16) // 立即数
+    imm = lastStage.inst.take(16).resize(GlobalConfig.dataBitsWidth)
+  }otherwise{
+    imm = lastStage.inst.take(16).asSInt.resize(GlobalConfig.dataBitsWidth).asBits
+  }
 
 
   val reg1Addr = lastStage.inst(21 to 25)
