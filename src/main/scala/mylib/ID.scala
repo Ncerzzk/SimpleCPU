@@ -1,7 +1,7 @@
 package mylib
 
 import spinal.core._
-import spinal.lib.master
+import spinal.lib.{master, slave}
 
 object InstEnum extends SpinalEnum{  // 指令枚举
   val EXEORI = newElement()
@@ -30,9 +30,18 @@ class IDOut extends Bundle{
 class ID extends Component{
   val regHeap = master(new RegHeapReadPort)
 
+  val exBack = new EXOut().flip()
+  val memBack = new MEMOut().flip()
+  val wbBack = slave(new RegHeapWritePort)
+
   def <>(regs: RegHeap)={
     regHeap <> regs.readPort
   }
+
+  def <>(ex:EX): Unit =exBack <> ex.exOut
+  def <>(mem:MEM) = memBack <> mem.memOut
+  def <>(wb:WB) = wbBack <> wb.wbOut
+
 
   val lastStage = new IFOut().flip()
 
@@ -74,18 +83,37 @@ class ID extends Component{
       regHeap.readEns(1) := False
     }
   }
-
+  var i = 0;
+  for( rnd <- List(idOut.opRnd1,idOut.opRnd2)){
+    when(regHeap.readEns(i)){
+      rnd := regHeap.readAddrs(i).mux(
+        exBack.writeRegAddr -> exBack.writeData,
+        memBack.writeRegAddr -> memBack.writeData,
+        wbBack.writeAddr -> wbBack.writeData,
+        default ->regHeap.readDatas(i)
+      )
+    }otherwise{
+      rnd := imm
+    }
+    i+=1
+  }
+  /*
   when(regHeap.readEns(0)){
-    idOut.opRnd1 := regHeap.readDatas(0)
+    idOut.opRnd1 := regHeap.readAddrs(0).mux(
+      exBack.writeRegAddr -> exBack.writeData,
+      memBack.writeRegAddr -> memBack.writeData,
+      default ->regHeap.readDatas(0)
+    )
   }otherwise{
     idOut.opRnd1 := imm
   }
+
   when(regHeap.readEns(1)){
     idOut.opRnd2 := regHeap.readDatas(1)
   }otherwise{
     idOut.opRnd2 := imm
   }
-
+*/
 
 }
 

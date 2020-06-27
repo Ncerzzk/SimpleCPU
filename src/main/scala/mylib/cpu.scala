@@ -95,6 +95,7 @@ class CPU extends Component  with BusMasterContain {
   if2id.left.inst := io.inst
   if2id.right <> id.lastStage
 
+
   val id2ex = new Stage(new IDOut())
   val ex = new EX()
   id2ex.left <> id.idOut
@@ -105,12 +106,18 @@ class CPU extends Component  with BusMasterContain {
   ex2mem.left<>ex.exOut
   ex2mem.right<>mem.lastStage
 
+
+
   val mem2wb = new Stage(new MEMOut())
   val wb = new WB()
   mem2wb.left <> mem.memOut
   mem2wb.right<>wb.lastStage
 
   wb<>regs
+
+  id <> ex
+  id <> mem
+  id <> wb
 
 }
 
@@ -119,31 +126,23 @@ class SOC extends Component {
   val cpu = new CPU
   val rom = new InstRom
 
-  rom.init(List.fill(16)(B("32'h34011100")))
+  romInitTestBack2gap()
   rom.io.inst<> cpu.io.inst
   rom.io.en <> cpu.io.romEn
   rom.io.addr<> cpu.io.romAddr
-  /*
-  val rom = new Rom
-  val ram = new Ram
-  val spm = new Spm
 
-  val busMasters = List(cpu)
-  val busSlaves = List(rom,ram)
+  def romInitTestBack0gap()={
+    val romInitVal=List(B(0),B("32'h34011100"),B("32'h34220011"))++List.fill(13)(B(0))
+    rom.init(romInitVal)
+  }
 
-  val busArbiter= new BusArbiter(busMasters.length)
-  val busMasterMux = new BusMasterMux(busMasters.length,GlobalConfig.dataBitsWidth)
-  val busSlaveMux = new BusSlaveMux(busSlaves.length,GlobalConfig.dataBitsWidth)
+  def romInitTestBack1gap()={
+    val romInitVal=List(B(0),B("32'h34011100"),B(0),B("32'h34220011"))++List.fill(12)(B(0))
+    rom.init(romInitVal)
+  }
 
-  spm.ioA <> cpu.spmA
-  spm.ioB <> cpu.spmB
-
-  busSlaveMux <>(busSlaves,busMasters)
-
-  busArbiter <> busMasters
-  busMasterMux <> (busSlaves,busMasters)
-
-  busArbiter <> busMasterMux
-
-   */
+  def romInitTestBack2gap()={
+    val romInitVal=List(B(0),B("32'h34011100"),B(0),B(0),B("32'h34220011"))++List.fill(11)(B(0))
+    rom.init(romInitVal)
+  }
 }

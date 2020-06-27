@@ -22,7 +22,7 @@ class InstRom extends Component {
   }
   protected val mem=Mem(Bits(GlobalConfig.dataBitsWidth),GlobalConfig.instRomCellNum)
 
-  mem.init(List.fill(16)(B("32'h34011100")))
+  //mem.init(List.fill(16)(B("32'h34011100")))
   io.inst := mem.readSync(io.addr.asUInt,io.en)
 
   def init(a:Seq[Bits]) = mem.init(a)
