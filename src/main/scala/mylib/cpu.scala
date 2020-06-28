@@ -127,7 +127,7 @@ class SOC extends Component {
   val cpu = new CPU
   val rom = new InstRom
 
-  romInitTestAnd0gap()
+  romInitTestANDOR()
   rom.io.inst<> cpu.io.inst
   rom.io.en <> cpu.io.romEn
   rom.io.addr<> cpu.io.romAddr
@@ -148,7 +148,48 @@ class SOC extends Component {
   }
 
   def romInitTestAnd0gap()={
-    val romInitVal=List(B(0),B("32'h34011100"),B("32'h34220011"),B("32'h30410010"),B("32'h38221000"))++List.fill(11)(B(0))
+    val inits=List(B(0),B("32'h34011100"),B("32'h34220011"),B("32'h30410010"),B("32'h38221000"))
+    val romInitVal=inits++List.fill(GlobalConfig.instRomCellNum-inits.length)(B(0))
+    rom.init(romInitVal)
+  }
+
+  def romInitTestAdd0gap()={
+    val inits=List(B(0),B("32'h34011100"),B("32'h24220064"))
+    val romInitVal=inits++List.fill(GlobalConfig.instRomCellNum-inits.length)(B(0))
+    rom.init(romInitVal)
+  }
+
+  def romInitTestADDSLTI()={
+    /*
+    addiu $2, $1, 0x1100
+	  sltiu $3, $2, 0x1000
+	  sltiu  $4, $2, 0x1101
+     */
+    val inits=List(B(0),B("32'h24221100"),B("32'h2c431000"),B("32'h2c441101"))
+    val romInitVal=inits++List.fill(GlobalConfig.instRomCellNum-inits.length)(B(0))
+    rom.init(romInitVal)
+  }
+
+  def romInitTestSUBSLTI(): Unit ={
+    /*
+    addiu $2, $1, 0xF100
+	  sltiu $3, $2, 0xF101
+	  slti  $4, $2, 0xE100
+     */
+    val inits=List(B(0),B("32'h2422f100"),B("32'h2c43f101"),B("32'h2844e100"))
+    val romInitVal=inits++List.fill(GlobalConfig.instRomCellNum-inits.length)(B(0))
+    rom.init(romInitVal)
+  }
+
+  def romInitTestANDOR(): Unit ={
+    /*
+    addiu $1, $0, 0x1100
+    addiu $2, $0, 0x0111
+    and   $3, $1 ,$2
+    or    $4, $1, $2
+     */
+    val inits=List(B(0),B("32'h24011100"),B("32'h24020111"),B("32'h00221824"),B("32'h00222025"))
+    val romInitVal=inits++List.fill(GlobalConfig.instRomCellNum-inits.length)(B(0))
     rom.init(romInitVal)
   }
 }

@@ -17,7 +17,7 @@ object Bin{
 
 object InstTypeEnum extends SpinalEnum{
   val R,I,J = newElement()
-  // R型指令的高6位为0，靠低6位区分功能
+  // R型指令的高6位为0(有例外），靠低6位区分功能
   // I型指令直接靠高6位区分功能
 }
 
@@ -40,19 +40,24 @@ object InstFUNCEnum extends SpinalEnum{ // 指令功能码枚举
 }
 
 object InstOPEnum extends SpinalEnum{  // 指令操作码枚举
-  val EXEORI,EXEANDI,EXEXORI= newElement()
+  val ORI,ANDI,XORI,ADDI,ADDIU,SLTI,SLTIU= newElement()
 
   defaultEncoding = SpinalEnumEncoding("static")(
-    EXEORI -> 0xD ,// 001101
-    EXEANDI -> 0xC,
-    EXEXORI ->0xE
+    ORI -> 0xD ,// 001101
+    ANDI -> 0xC,
+    XORI ->0xE,
+    ADDI ->0x8,
+    ADDIU->0x9,
+    SLTI -> 0xA,
+    SLTIU->0xB
   )
 }
 
 object OpEnum extends SpinalEnum{
   val LOGIC,ALU = newElement()
   val funcs = List(
-    (LOGIC,OPLogic.caculate _)
+    (LOGIC,OPLogic.caculate _),
+    (ALU,OPArith.caculate _)
   )
 
   def caculate(op:Bits,opsel:Bits,oprnd1:Bits,oprnd2:Bits,left:Bits): Unit ={
@@ -63,18 +68,9 @@ object OpEnum extends SpinalEnum{
     }
   }
 }
-object OPArith extends SpinalEnum{
-  val
-}
 
-object OPLogic extends SpinalEnum{
-  val OR,AND,XOR = newElement()
-
-  val funcs = List(
-    (OR,(a:Bits,b:Bits)=> a | b),
-    (AND,(a:Bits,b:Bits)=>a & b),
-    (XOR,(a:Bits,b:Bits)=>a ^ b)
-  )
+trait OPWithFunc{
+  val funcs:List[(SpinalEnumElement[_],(Bits,Bits)=>Bits)]
 
   def caculate(opsel:Bits,oprnd1:Bits,oprnd2:Bits,left:Bits)={
     for(i <- funcs){
@@ -84,6 +80,28 @@ object OPLogic extends SpinalEnum{
     }
   }
 
+}
+
+object OPArith extends SpinalEnum with OPWithFunc{
+  val ADDU,SUBU = newElement()
+  val SLTI,SLTIU = newElement()
+
+  val funcs = List(
+    (ADDU,(a:Bits,b:Bits)=> (a.asUInt + b.asUInt).asBits),
+    (SUBU,(a:Bits,b:Bits)=> (a.asUInt - b.asUInt).asBits),
+    // SLTI => Source Less than Immediate
+    (SLTIU,(a:Bits,b:Bits)=> (a.asUInt < b.asUInt)?B(1,32 bits)|B(0)),
+    (SLTI,(a:Bits,b:Bits) => (a.asSInt < b.asSInt)?B(1,32 bits)|B(0))
+  )
+}
+
+object OPLogic extends SpinalEnum with OPWithFunc {
+  val OR,AND,XOR = newElement()
+  val funcs = List(
+    (OR,(a:Bits,b:Bits)=> a | b),
+    (AND,(a:Bits,b:Bits)=>a & b),
+    (XOR,(a:Bits,b:Bits)=>a ^ b)
+  )
 }
 
 
@@ -99,12 +117,21 @@ class IDOut extends Bundle{
 
 
 object IDS {
-  def getInstType(inst:Bits): SpinalEnumCraft[InstTypeEnum.type] = (inst.takeHigh(6)===B(0,6 bits))?InstTypeEnum.R|InstTypeEnum.I
-  //val temp =new Inst(InstEnum.EXEORI,OpEnum.LOGIC,OpLogic.OR)
+  def OPof(inst:Bits)= inst.takeHigh(6)
+  def FUNCof(inst:Bits) = inst.take(6)
+
+  def getInstType(inst:Bits): SpinalEnumCraft[InstTypeEnum.type] = {
+    (OPof(inst)===B(0,6 bits) || (OPof(inst)===B("6'b011100")))?
+      InstTypeEnum.R | InstTypeEnum.I
+  }
+
   val instsI = List(
-    new InstI(InstOPEnum.EXEORI,OpEnum.LOGIC,OPLogic.OR),
-    new InstI(InstOPEnum.EXEANDI,OpEnum.LOGIC,OPLogic.AND),
-    new InstI(InstOPEnum.EXEXORI,OpEnum.LOGIC,OPLogic.XOR)
+    new InstI(InstOPEnum.ORI,OpEnum.LOGIC,OPLogic.OR),
+    new InstI(InstOPEnum.ANDI,OpEnum.LOGIC,OPLogic.AND),
+    new InstI(InstOPEnum.XORI,OpEnum.LOGIC,OPLogic.XOR),
+    new InstI(InstOPEnum.ADDIU,OpEnum.ALU,OPArith.ADDU),
+    new InstI(InstOPEnum.SLTI,OpEnum.ALU,OPArith.SLTI),
+    new InstI(InstOPEnum.SLTIU,OpEnum.ALU,OPArith.SLTIU)
   )
 
   val instsR = List(
@@ -151,16 +178,10 @@ class ID extends Component{
 
   val idOut= new IDOut
 
-  val op =lastStage.inst.takeHigh(6)
-  val op2 = lastStage.inst(6 to 10)
-  val op3 = lastStage.inst.take(6)
-  val op4 = lastStage.inst(16 to 20)
-
-  val imm = B(0,16 bits) ## lastStage.inst.take(16)    // 立即数
-  lastStage.inst.resizeLeft(5)
-
-  val reg1Addr = lastStage.inst(21 to 25)
-  val reg2Addr = lastStage.inst(16 to 20)
+  //决定立即数的符号位拓展
+  val imm:Bits = (idOut.op === OpEnum.LOGIC.asBits.resize(idOut.op.getWidth))?
+    lastStage.inst.take(16).resize(GlobalConfig.dataBitsWidth)|
+    lastStage.inst.take(16).asSInt.resize(GlobalConfig.dataBitsWidth).asBits
 
 
   for(i <- idOut.elements){
@@ -178,9 +199,9 @@ class ID extends Component{
   regHeap.readEns(1) := False
 
   when(IDS.getInstType(lastStage.inst)===InstTypeEnum.I){
-    var targetReg= lastStage.inst(16 to 20)
-    var sourceReg = lastStage.inst(21 to 25)
-    val instOp = lastStage.inst.takeHigh(6)
+    val targetReg= lastStage.inst(16 to 20)
+    val sourceReg = lastStage.inst(21 to 25)
+    val instOp = IDS.OPof(lastStage.inst)
 
     for (i<- IDS.instsI){
       when(i.instOP.asBits.resize(instOp.getWidth)===instOp){
@@ -194,9 +215,25 @@ class ID extends Component{
     regHeap.readEns(0) := True
     regHeap.readEns(1) := False
     regHeap.readAddrs(0) :=sourceReg
-  }/*elsewhen(IDS.getInstType(lastStage.inst)===InstTypeEnum.R){
-    var targetReg= lastStage.inst(16 to 20)
-  }*/
+  }elsewhen(IDS.getInstType(lastStage.inst)===InstTypeEnum.R){
+    val targetReg= lastStage.inst(16 to 20)  //rt
+    val sourceReg= lastStage.inst(21 to 25)  //rs
+    val destinationReg = lastStage.inst(11 to 15)  //rd
+
+    val FUNC = IDS.FUNCof(lastStage.inst)
+    for(i<- IDS.instsR){
+      when(FUNC === i.instFUNC.resized){
+        idOut.op := i.decodeOP.resized
+        idOut.opSel := i.deCodeOpSel.resized
+      }
+    }
+    idOut.writeRegAddr := destinationReg
+    idOut.writeReg := True
+    regHeap.readEns(0) := True
+    regHeap.readEns(1) := True
+    regHeap.readAddrs(0) :=sourceReg
+    regHeap.readAddrs(1) :=targetReg
+  }
 
 
   var i = 0;
