@@ -82,6 +82,7 @@ class CPU extends Component  with BusMasterContain {
     val romEn = out Bool
     val romAddr = out Bits( log2Up(GlobalConfig.instRomCellNum) bits)
   }
+  val stageCTRL = new StageCTRL()
   val regs= new RegHeap(GlobalConfig.regNum)
 
   val pc_reg =new PC()
@@ -92,15 +93,19 @@ class CPU extends Component  with BusMasterContain {
   val if2id = new Stage(new IFOut())
   val id = new ID()
   id <> regs
+  id <> pc_reg
   if2id.left.pc := pc_reg.io.pc
   if2id.left.inst := io.inst
   if2id.right <> id.lastStage
+
+
 
 
   val id2ex = new Stage(new IDOut())
   val ex = new EX()
   id2ex.left <> id.idOut
   id2ex.right <> ex.lastStage
+
 
   val ex2mem = new Stage(new EXOut())
   val mem = new MEM()
@@ -120,6 +125,8 @@ class CPU extends Component  with BusMasterContain {
   id <> mem
   id <> wb
 
+  stageCTRL <> List(if2id.ctrl,id2ex.ctrl,ex2mem.ctrl,mem2wb.ctrl)
+  stageCTRL.reqFromID <> id.reqCTRL
 }
 
 class SOC extends Component {
@@ -127,7 +134,7 @@ class SOC extends Component {
   val cpu = new CPU
   val rom = new InstRom
 
-  romInitTestANDOR()
+  romInitTestJ()
   rom.io.inst<> cpu.io.inst
   rom.io.en <> cpu.io.romEn
   rom.io.addr<> cpu.io.romAddr
@@ -189,6 +196,13 @@ class SOC extends Component {
     or    $4, $1, $2
      */
     val inits=List(B(0),B("32'h24011100"),B("32'h24020111"),B("32'h00221824"),B("32'h00222025"))
+    val romInitVal=inits++List.fill(GlobalConfig.instRomCellNum-inits.length)(B(0))
+    rom.init(romInitVal)
+  }
+
+  def romInitTestJ():Unit = {
+    val inits=List(B(0),B("32'h24011100"),B("32'h08000005"),B("32'h24020111"),B("32'h00221824"),
+      B("32'h00222025"))
     val romInitVal=inits++List.fill(GlobalConfig.instRomCellNum-inits.length)(B(0))
     rom.init(romInitVal)
   }

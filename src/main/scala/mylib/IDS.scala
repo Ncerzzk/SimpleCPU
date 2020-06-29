@@ -24,6 +24,7 @@ object InstTypeEnum extends SpinalEnum{
 object InstFUNCEnum extends SpinalEnum{ // 指令功能码枚举
   val AND,OR,XOR,NOR= newElement()
   val SLL,SRL,SRA,SLLV,SRLV,SRAV = newElement()
+  val MOVN,MOVZ,MFHI,MFLO,MTHI,MTLO = newElement()
   defaultEncoding = SpinalEnumEncoding("static")(
     AND -> 0x24 ,
     OR -> 0x25,
@@ -35,7 +36,14 @@ object InstFUNCEnum extends SpinalEnum{ // 指令功能码枚举
     SRA->0x3,
     SLLV->0x4,
     SRLV->0x6,
-    SRAV->0x7
+    SRAV->0x7,
+
+    MOVN->0xB,
+    MOVZ->0xA,
+    MFHI->0x10,
+    MFLO->0x12,
+    MTHI->0x11,
+    MTLO->0x13
   )
 }
 
@@ -125,6 +133,12 @@ object IDS {
       InstTypeEnum.R | InstTypeEnum.I
   }
 
+  def isJInst(inst:Bits): Bool = (OPof(inst)===B("6'b000010")) || (OPof(inst)=== B("6'b000011"))
+
+  def isIInst(inst:Bits):Bool = OPof(inst)=/=B(0,6 bits) && (~isJInst(inst))
+
+
+
   val instsI = List(
     new InstI(InstOPEnum.ORI,OpEnum.LOGIC,OPLogic.OR),
     new InstI(InstOPEnum.ANDI,OpEnum.LOGIC,OPLogic.AND),
@@ -151,7 +165,7 @@ class InstI(s:SpinalEnumElement[_]*){  // I型指令类
 
 class InstR(s:SpinalEnumElement[_]*){  // R型指令类
   val arr=s.toList
-
+  assert(arr.length==3)
   val instFUNC = arr(0).asBits
   val decodeOP = arr(1).asBits
   val deCodeOpSel = arr(2).asBits
@@ -165,13 +179,15 @@ class ID extends Component{
   val memBack = new MEMOut().flip()
   val wbBack = slave(new RegHeapWritePort)
 
-  def <>(regs: RegHeap)={
-    regHeap <> regs.readPort
-  }
+  val pcPort = master(new PCPort)
 
+  val reqCTRL = master(new StageCTRLBundle)
+
+  def <>(regs: RegHeap)= regHeap <> regs.readPort
   def <>(ex:EX): Unit =exBack <> ex.exOut
   def <>(mem:MEM) = memBack <> mem.memOut
   def <>(wb:WB) = wbBack <> wb.wbOut
+  def <>(pc:PC) = pcPort <> pc.writePort
 
 
   val lastStage = new IFOut().flip()
@@ -183,7 +199,12 @@ class ID extends Component{
     lastStage.inst.take(16).resize(GlobalConfig.dataBitsWidth)|
     lastStage.inst.take(16).asSInt.resize(GlobalConfig.dataBitsWidth).asBits
 
+  idOut.elements.foreach(a=>{
+    a._2 := (if(a._1 =="writeReg") False else B(0)) }
+  )
 
+  reqCTRL.stateOut := StageStateEnum.ENABLE
+/*
   for(i <- idOut.elements){
     if(i._1 == "writeReg"){
       i._2 := False
@@ -193,20 +214,26 @@ class ID extends Component{
     }
   }
 
+ */
+
+  pcPort.writeEN :=False
+  pcPort.writeData := 0
+
+
   regHeap.readAddrs(0) := 0
   regHeap.readAddrs(1) := 0
   regHeap.readEns(0) := False
   regHeap.readEns(1) := False
 
-  when(IDS.getInstType(lastStage.inst)===InstTypeEnum.I){
-    val targetReg= lastStage.inst(16 to 20)
+  when(IDS.isIInst(lastStage.inst)) {
+    val targetReg = lastStage.inst(16 to 20)
     val sourceReg = lastStage.inst(21 to 25)
     val instOp = IDS.OPof(lastStage.inst)
 
-    for (i<- IDS.instsI){
-      when(i.instOP.asBits.resize(instOp.getWidth)===instOp){
-        idOut.op := i.decodeOP.asBits.resized
-        idOut.opSel := i.decodeOPSel.asBits.resized
+    for (i <- IDS.instsI) {
+      when(i.instOP.asBits.resize(instOp.getWidth) === instOp) {
+        idOut.op := i.decodeOP.resized
+        idOut.opSel := i.decodeOPSel.resized
       }
     }
 
@@ -214,8 +241,21 @@ class ID extends Component{
     idOut.writeReg := True
     regHeap.readEns(0) := True
     regHeap.readEns(1) := False
-    regHeap.readAddrs(0) :=sourceReg
-  }elsewhen(IDS.getInstType(lastStage.inst)===InstTypeEnum.R){
+    regHeap.readAddrs(0) := sourceReg
+  }elsewhen(IDS.isJInst(lastStage.inst)){
+    val targetAddress = lastStage.inst.take(26)
+    val newPC =  (lastStage.pc.asUInt+1).asBits.takeHigh(6) ## targetAddress
+    pcPort.writeEN := True
+    pcPort.writeData := newPC
+    //reqCTRL.stateOut := StageStateEnum.FLUSH
+/*
+    when(IDS.OPof(lastStage.inst).take(1) === B(1,1 bit)){
+      idOut.writeReg :=True
+      idOut.writeRegAddr := (lastStage.pc.asUInt+1).asBits
+    }
+*/
+
+  }otherwise{
     val targetReg= lastStage.inst(16 to 20)  //rt
     val sourceReg= lastStage.inst(21 to 25)  //rs
     val destinationReg = lastStage.inst(11 to 15)  //rd
@@ -227,6 +267,8 @@ class ID extends Component{
         idOut.opSel := i.deCodeOpSel.resized
       }
     }
+    // TODO：
+    // 有些指令如MOVN，最终未必会写入寄存器
     idOut.writeRegAddr := destinationReg
     idOut.writeReg := True
     regHeap.readEns(0) := True
@@ -238,13 +280,28 @@ class ID extends Component{
 
   var i = 0;
   for( rnd <- List(idOut.opRnd1,idOut.opRnd2)){
+    // TODO:
+    // 需要考虑，会有一些指令最后并没有写入寄存器，因此如果有这种情况，并不能使用这些指令的结果
+    // 还要考虑，如果指令往$0写数据，那么这个数据也是不能用的
     when(regHeap.readEns(i)){
+      rnd := regHeap.readDatas(i)
+      when(exBack.writeReg && exBack.writeRegAddr===regHeap.readAddrs(i)){
+        rnd := exBack.writeData
+      }
+      when(memBack.writeReg && memBack.writeRegAddr===regHeap.readAddrs(i)){
+        rnd := memBack.writeData
+      }
+      when(wbBack.writeEn && wbBack.writeAddr===regHeap.readAddrs(i)){
+        rnd := wbBack.writeData
+      }
+      /*
       rnd := regHeap.readAddrs(i).mux(
         exBack.writeRegAddr -> exBack.writeData,
         memBack.writeRegAddr -> memBack.writeData,
         wbBack.writeAddr -> wbBack.writeData,
         default ->regHeap.readDatas(i)
       )
+       */
     }otherwise{
       rnd := imm
     }
