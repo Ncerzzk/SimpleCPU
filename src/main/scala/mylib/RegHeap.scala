@@ -36,7 +36,6 @@ class RegHeap(regNum: Int = 32) extends  Component {
   when(writePort.writeEn && (writePort.writeAddr =/= B(0))){
       heap(writePort.writeAddr.asUInt) := writePort.writeData
   }otherwise{
-
     for(i <- 0 until 2){
       when(readPort.readEns(i)) {
         readPort.readDatas(i) := heap(readPort.readAddrs(i).asUInt)

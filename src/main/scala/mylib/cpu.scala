@@ -134,7 +134,7 @@ class SOC extends Component {
   val cpu = new CPU
   val rom = new InstRom
 
-  romInitTestJ()
+  romInitTestBNOJ()
   rom.io.inst<> cpu.io.inst
   rom.io.en <> cpu.io.romEn
   rom.io.addr<> cpu.io.romAddr
@@ -206,4 +206,35 @@ class SOC extends Component {
     val romInitVal=inits++List.fill(GlobalConfig.instRomCellNum-inits.length)(B(0))
     rom.init(romInitVal)
   }
+
+  def romInitTestB():Unit = {
+    /*
+    nop
+    addiu $1, $0, 0x1100
+    b 2
+    addiu $2, $0, 0x0111
+    and   $3, $1 ,$2
+    or    $4, $1, $2
+     */
+    val inits=List(B(0),B("32'h24011100"),B("32'h10000002"),B("32'h24020111"),B("32'h00221824"),
+      B("32'h00222025"))
+    val romInitVal=inits++List.fill(GlobalConfig.instRomCellNum-inits.length)(B(0))
+    rom.init(romInitVal)
+  }
+
+  def romInitTestBNOJ():Unit = {
+    /*
+	nop
+	addiu $1, $0, 0x1100
+	beq  $1,$0,20
+	addiu $2, $0, 0x0111
+	and   $3, $1 ,$2
+	or    $4, $1, $2
+     */
+    val inits=List(B(0),B("32'h24011100"),B("32'h10200007"),B("32'h24020111"),B("32'h00221824"),
+      B("32'h00222025"))
+    val romInitVal=inits++List.fill(GlobalConfig.instRomCellNum-inits.length)(B(0))
+    rom.init(romInitVal)
+  }
+
 }

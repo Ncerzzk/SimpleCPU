@@ -49,7 +49,7 @@ object InstFUNCEnum extends SpinalEnum{ // 指令功能码枚举
 
 object InstOPEnum extends SpinalEnum{  // 指令操作码枚举
   val ORI,ANDI,XORI,ADDI,ADDIU,SLTI,SLTIU= newElement()
-
+  val BEQ,BGTZ,BLEZ,BNE = newElement()
   defaultEncoding = SpinalEnumEncoding("static")(
     ORI -> 0xD ,// 001101
     ANDI -> 0xC,
@@ -57,7 +57,13 @@ object InstOPEnum extends SpinalEnum{  // 指令操作码枚举
     ADDI ->0x8,
     ADDIU->0x9,
     SLTI -> 0xA,
-    SLTIU->0xB
+    SLTIU->0xB,
+
+    // 以下为分支语句
+    BEQ->0x4,
+    BGTZ->0x7,
+    BLEZ->0x6,
+    BNE->0x5
   )
 }
 
@@ -112,8 +118,6 @@ object OPLogic extends SpinalEnum with OPWithFunc {
   )
 }
 
-
-
 class IDOut extends Bundle{
   val op = out Bits( 3 bits)     // 运算类型
   val opSel = out Bits(8 bits) //运算子类型
@@ -127,6 +131,8 @@ class IDOut extends Bundle{
 object IDS {
   def OPof(inst:Bits)= inst.takeHigh(6)
   def FUNCof(inst:Bits) = inst.take(6)
+  def RSof(inst:Bits)=inst(21 to 25)
+  def RTof(inst:Bits)=inst(16 to 20)
 
   def getInstType(inst:Bits): SpinalEnumCraft[InstTypeEnum.type] = {
     (OPof(inst)===B(0,6 bits) || (OPof(inst)===B("6'b011100")))?
@@ -136,6 +142,17 @@ object IDS {
   def isJInst(inst:Bits): Bool = (OPof(inst)===B("6'b000010")) || (OPof(inst)=== B("6'b000011"))
 
   def isIInst(inst:Bits):Bool = OPof(inst)=/=B(0,6 bits) && (~isJInst(inst))
+
+  def isRInst(inst:Bits):Bool={
+    val op = OPof(inst)
+    val l = List(InstOPEnum.BEQ,InstOPEnum.BLEZ,InstOPEnum.BGTZ,InstOPEnum.BNE)
+    var result :Bool = False
+    val newL= for(i <- l) yield i.asBits.resize(op.getWidth) === op
+    for(i <-newL){
+      result = result|i
+    }
+    result
+  }
 
 
 
@@ -153,6 +170,16 @@ object IDS {
     new InstR(InstFUNCEnum.OR,OpEnum.LOGIC,OPLogic.OR)
   )
 
+  type getRsFuncType= Bits=>Bits
+  type getRtFuncType= Bits=>Bits
+  val reg0=()=>B(0,6 bits).clone()
+  val instsB = List(
+  // 指令OP，操作数1来源，操作数2来源，转移分支的条件
+    (InstOPEnum.BEQ, (inst:Bits)=>RSof(inst),(inst:Bits)=>RTof(inst), (a:Bits,b:Bits)=> a === b),
+    (InstOPEnum.BGTZ,(inst:Bits)=>RSof(inst),(inst:Bits)=>reg0(),     (a:Bits,b:Bits)=> a.asSInt > b.asSInt),
+    (InstOPEnum.BLEZ,(inst:Bits)=>RSof(inst),(inst:Bits)=>reg0(),     (a:Bits,b:Bits)=> a.asSInt <= b.asSInt),
+    (InstOPEnum.BNE,(inst:Bits)=>RSof(inst),(inst:Bits)=>RTof(inst),  (a:Bits,b:Bits)=> a =/= b)
+  )
 }
 
 class InstI(s:SpinalEnumElement[_]*){  // I型指令类
@@ -204,17 +231,6 @@ class ID extends Component{
   )
 
   reqCTRL.stateOut := StageStateEnum.ENABLE
-/*
-  for(i <- idOut.elements){
-    if(i._1 == "writeReg"){
-      i._2 := False
-    }
-    else {
-      i._2 := B(0)
-    }
-  }
-
- */
 
   pcPort.writeEN :=False
   pcPort.writeData := 0
@@ -230,18 +246,39 @@ class ID extends Component{
     val sourceReg = lastStage.inst(21 to 25)
     val instOp = IDS.OPof(lastStage.inst)
 
-    for (i <- IDS.instsI) {
-      when(i.instOP.asBits.resize(instOp.getWidth) === instOp) {
-        idOut.op := i.decodeOP.resized
-        idOut.opSel := i.decodeOPSel.resized
+    when(IDS.isRInst(lastStage.inst)){
+      val offset = lastStage.inst.take(16)
+      for(i <- IDS.instsB){
+        when(instOp === i._1.asBits.resize(instOp.getWidth)){  // 确定了指令
+          val rs = i._2(lastStage.inst)
+          val rt = i._3(lastStage.inst)
+          regHeap.readAddrs(0) := rs.resized
+          regHeap.readAddrs(1) := rt.resized
+          when(i._4(idOut.opRnd1,idOut.opRnd2)){
+            val newPC = offset.asSInt.resize(GlobalConfig.dataBitsWidth)+lastStage.pc.asSInt+1
+            pcPort.writeEN := True
+            pcPort.writeData := newPC.asBits
+          }
+        }
       }
+      //idOut.writeRegAddr := targetReg
+      idOut.writeReg := False
+      regHeap.readEns(0) := True
+      regHeap.readEns(1) := True
+    }otherwise{
+      for (i <- IDS.instsI) {
+        when(i.instOP.asBits.resize(instOp.getWidth) === instOp) {
+          idOut.op := i.decodeOP.resized
+          idOut.opSel := i.decodeOPSel.resized
+        }
+      }
+      idOut.writeRegAddr := targetReg
+      idOut.writeReg := True
+      regHeap.readEns(0) := True
+      regHeap.readEns(1) := False
+      regHeap.readAddrs(0) := sourceReg
     }
 
-    idOut.writeRegAddr := targetReg
-    idOut.writeReg := True
-    regHeap.readEns(0) := True
-    regHeap.readEns(1) := False
-    regHeap.readAddrs(0) := sourceReg
   }elsewhen(IDS.isJInst(lastStage.inst)){
     val targetAddress = lastStage.inst.take(26)
     val newPC =  (lastStage.pc.asUInt+1).asBits.takeHigh(6) ## targetAddress
