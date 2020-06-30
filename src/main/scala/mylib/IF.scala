@@ -19,6 +19,7 @@ class PC extends Component{
 
   val pc_reg = Reg(UInt(GlobalConfig.dataBitsWidth)).init(U("32'h0"))
   io.pc := pc_reg.asBits
+
   when(writePort.writeEN){
     pc_reg := writePort.writeData.asUInt
   }otherwise {
@@ -58,9 +59,14 @@ class StageCTRL extends Component{
 class Stage[T <: Bundle](gen: => T) extends Component{
   val left:T= gen.flip()
   val ctrl: StageCTRLBundle = slave(new StageCTRLBundle)
-  val right = createOutPort(left)
+  val right:T= createOutPort(left)
 
-  def createOutPort(inBundle:Bundle)= {
+  def <>(l:T,r:T):Unit={
+    l<>left
+    r<>right
+  }
+
+  def createOutPort(inBundle:Bundle):T= {
     new Bundle {
       for(i <- inBundle.elements){
         val a =out (Reg(i._2.clone()))
@@ -80,7 +86,7 @@ class Stage[T <: Bundle](gen: => T) extends Component{
 
       }
     }
-  }
+  }.asInstanceOf[T]
 }
 
 class IFOut extends Bundle{

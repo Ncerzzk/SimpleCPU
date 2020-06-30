@@ -25,6 +25,9 @@ object InstFUNCEnum extends SpinalEnum{ // 指令功能码枚举
   val AND,OR,XOR,NOR= newElement()
   val SLL,SRL,SRA,SLLV,SRLV,SRAV = newElement()
   val MOVN,MOVZ,MFHI,MFLO,MTHI,MTLO = newElement()
+  val ADDU,SUBU,SLTU = newElement()
+
+  val MULT,MULTU = newElement()
   defaultEncoding = SpinalEnumEncoding("static")(
     AND -> 0x24 ,
     OR -> 0x25,
@@ -43,7 +46,14 @@ object InstFUNCEnum extends SpinalEnum{ // 指令功能码枚举
     MFHI->0x10,
     MFLO->0x12,
     MTHI->0x11,
-    MTLO->0x13
+    MTLO->0x13,
+
+    ADDU->0x21,
+    SUBU->0x23,
+    SLTU->0x2B,
+
+    MULT->0x18,
+    MULTU->0x19
   )
 }
 
@@ -98,14 +108,14 @@ trait OPWithFunc{
 
 object OPArith extends SpinalEnum with OPWithFunc{
   val ADDU,SUBU = newElement()
-  val SLTI,SLTIU = newElement()
+  val SLT,SLTU = newElement()
 
   val funcs = List(
     (ADDU,(a:Bits,b:Bits)=> (a.asUInt + b.asUInt).asBits),
     (SUBU,(a:Bits,b:Bits)=> (a.asUInt - b.asUInt).asBits),
     // SLTI => Source Less than Immediate
-    (SLTIU,(a:Bits,b:Bits)=> (a.asUInt < b.asUInt)?B(1,32 bits)|B(0)),
-    (SLTI,(a:Bits,b:Bits) => (a.asSInt < b.asSInt)?B(1,32 bits)|B(0))
+    (SLTU, (a:Bits, b:Bits)=> (a.asUInt < b.asUInt)?B(1,32 bits)|B(0)),
+    (SLT, (a:Bits, b:Bits) => (a.asSInt < b.asSInt)?B(1,32 bits)|B(0))
   )
 }
 
@@ -134,14 +144,9 @@ object IDS {
   def RSof(inst:Bits)=inst(21 to 25)
   def RTof(inst:Bits)=inst(16 to 20)
 
-  def getInstType(inst:Bits): SpinalEnumCraft[InstTypeEnum.type] = {
-    (OPof(inst)===B(0,6 bits) || (OPof(inst)===B("6'b011100")))?
-      InstTypeEnum.R | InstTypeEnum.I
-  }
-
   def isJInst(inst:Bits): Bool = (OPof(inst)===B("6'b000010")) || (OPof(inst)=== B("6'b000011"))
 
-  def isIInst(inst:Bits):Bool = OPof(inst)=/=B(0,6 bits) && (~isJInst(inst))
+  def isIRInst(inst:Bits):Bool = OPof(inst)=/=B(0,6 bits) && (~isJInst(inst))
 
   def isRInst(inst:Bits):Bool={
     val op = OPof(inst)
@@ -154,20 +159,21 @@ object IDS {
     result
   }
 
-
-
   val instsI = List(
     new InstI(InstOPEnum.ORI,OpEnum.LOGIC,OPLogic.OR),
     new InstI(InstOPEnum.ANDI,OpEnum.LOGIC,OPLogic.AND),
     new InstI(InstOPEnum.XORI,OpEnum.LOGIC,OPLogic.XOR),
     new InstI(InstOPEnum.ADDIU,OpEnum.ALU,OPArith.ADDU),
-    new InstI(InstOPEnum.SLTI,OpEnum.ALU,OPArith.SLTI),
-    new InstI(InstOPEnum.SLTIU,OpEnum.ALU,OPArith.SLTIU)
+    new InstI(InstOPEnum.SLTI,OpEnum.ALU,OPArith.SLT),
+    new InstI(InstOPEnum.SLTIU,OpEnum.ALU,OPArith.SLTU)
   )
 
   val instsR = List(
     new InstR(InstFUNCEnum.AND,OpEnum.LOGIC,OPLogic.AND),
-    new InstR(InstFUNCEnum.OR,OpEnum.LOGIC,OPLogic.OR)
+    new InstR(InstFUNCEnum.OR,OpEnum.LOGIC,OPLogic.OR),
+    new InstR(InstFUNCEnum.ADDU,OpEnum.ALU,OPArith.ADDU),
+    new InstR(InstFUNCEnum.SUBU,OpEnum.ALU,OPArith.SUBU),
+    new InstR(InstFUNCEnum.SLTU,OpEnum.ALU,OPArith.SLTU)
   )
 
   type getRsFuncType= Bits=>Bits
@@ -200,24 +206,24 @@ class InstR(s:SpinalEnumElement[_]*){  // R型指令类
 
 class ID extends Component{
 
-  val regHeap = master(new RegHeapReadPort)
+  val regHeap: RegHeapReadPort = master(new RegHeapReadPort)
 
-  val exBack = new EXOut().flip()
-  val memBack = new MEMOut().flip()
-  val wbBack = slave(new RegHeapWritePort)
+  val exBack: EXOut = new EXOut().flip()
+  val memBack: MEMOut = new MEMOut().flip()
+  val wbBack: RegHeapWritePort = slave(new RegHeapWritePort)
 
-  val pcPort = master(new PCPort)
+  val pcPort: PCPort = master(new PCPort)
 
-  val reqCTRL = master(new StageCTRLBundle)
+  val reqCTRL: StageCTRLBundle = master(new StageCTRLBundle)
 
-  def <>(regs: RegHeap)= regHeap <> regs.readPort
+  def <>(regs: RegHeap): Unit = regHeap <> regs.readPort
   def <>(ex:EX): Unit =exBack <> ex.exOut
-  def <>(mem:MEM) = memBack <> mem.memOut
-  def <>(wb:WB) = wbBack <> wb.wbOut
-  def <>(pc:PC) = pcPort <> pc.writePort
+  def <>(mem:MEM): Unit  = memBack <> mem.memOut
+  def <>(wb:WB): Unit  = wbBack <> wb.wbOut
+  def <>(pc:PC): Unit  = pcPort <> pc.writePort
 
 
-  val lastStage = new IFOut().flip()
+  val lastStage: IFOut = new IFOut().flip()
 
   val idOut= new IDOut
 
@@ -235,13 +241,12 @@ class ID extends Component{
   pcPort.writeEN :=False
   pcPort.writeData := 0
 
-
   regHeap.readAddrs(0) := 0
   regHeap.readAddrs(1) := 0
   regHeap.readEns(0) := False
   regHeap.readEns(1) := False
 
-  when(IDS.isIInst(lastStage.inst)) {
+  when(IDS.isIRInst(lastStage.inst)) {
     val targetReg = lastStage.inst(16 to 20)
     val sourceReg = lastStage.inst(21 to 25)
     val instOp = IDS.OPof(lastStage.inst)

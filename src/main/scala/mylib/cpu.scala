@@ -74,7 +74,15 @@ class BusInterface extends  Component{
     val write_data = out Bits(32 bits)
   }
 }
+class Mut extends Component{
+  val io=new Bundle{
+    val data1 = in(SInt(32 bits))
+    val data2 = in(SInt(32 bits))
+    val outdata = out(Reg(UInt(64 bits)))
+  }
 
+  io.outdata := (io.data1 * io.data2).asUInt
+}
 class CPU extends Component  with BusMasterContain {
 
   val io = new Bundle{
@@ -99,25 +107,18 @@ class CPU extends Component  with BusMasterContain {
   if2id.right <> id.lastStage
 
 
-
-
   val id2ex = new Stage(new IDOut())
   val ex = new EX()
-  id2ex.left <> id.idOut
-  id2ex.right <> ex.lastStage
-
+  id2ex <>(id.idOut,ex.lastStage)
 
   val ex2mem = new Stage(new EXOut())
   val mem = new MEM()
-  ex2mem.left<>ex.exOut
-  ex2mem.right<>mem.lastStage
-
+  ex2mem <>(ex.exOut,mem.lastStage)
 
 
   val mem2wb = new Stage(new MEMOut())
   val wb = new WB()
-  mem2wb.left <> mem.memOut
-  mem2wb.right<>wb.lastStage
+  mem2wb <> (mem.memOut,wb.lastStage)
 
   wb<>regs
 

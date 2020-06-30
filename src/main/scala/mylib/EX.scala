@@ -13,7 +13,6 @@ class EXOut extends Bundle{
 class EX extends Component{
   val lastStage= new IDOut().flip()
   val exOut = new EXOut
-
   exOut.writeReg := lastStage.writeReg
   exOut.writeRegAddr := lastStage.writeRegAddr
   exOut.writeData :=0

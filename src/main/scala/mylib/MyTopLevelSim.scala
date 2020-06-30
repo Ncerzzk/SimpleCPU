@@ -20,6 +20,28 @@ object RomTest {
     }
   }
 }
+object MUTTest{
+  def main(args:Array[String]):Unit = {
+    SimConfig.withWave.compile(new Mut()).doSim{dut=>
+      dut.clockDomain.forkStimulus(period = 10)
+      val test=List(
+        ((-10),(-100000)),
+        ((10),(1000000)),
+        ((10),(1000000)),
+        ((-10),(1000000)),
+          (0,0)
+
+      )
+      for(i <- test){
+        dut.io.data1 #= i._1
+        dut.io.data2 #= i._2
+        dut.clockDomain.waitSampling()
+      }
+
+    }
+  }
+}
+
 
 object SocTestBasic{
   def main(args:Array[String]):Unit = {
