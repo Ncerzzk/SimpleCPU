@@ -4,6 +4,11 @@ import spinal.core._
 import spinal.lib._
 
 object GlobalConfig{
+  val ANDI = M"001100--_--------_--------_--------"
+  val ADDI = M"001000--_--------_--------_--------"
+  val ADD  = M"000000--_--------_--------_--100000"
+
+
   val dataBitsWidth= 32 bits
   val spmCellNum:Int = 4096/dataBitsWidth.value
   val regNum = 32
@@ -11,69 +16,6 @@ object GlobalConfig{
 
 }
 
-object FlowStateEnum extends SpinalEnum(defaultEncoding = binarySequential) with NeedNBits{
-  val NORMAL,REFRESH,DELAY = newElement()
-}
-
-
-
-
-class SpmPort extends Bundle with IMasterSlave{
-  val addr =  Bits(log2Up(GlobalConfig.spmCellNum) bits)
-  val cs =  Bool
-  val read_or_write =  Bool
-  val write_data=  Bits(GlobalConfig.dataBitsWidth)
-  val read_data =  Bits(GlobalConfig.dataBitsWidth)
-
-  override def asMaster(): Unit = {
-    out(addr,cs,read_or_write,write_data)
-    in(read_data)
-  }
-
-
-}
-
-class Spm(size :Int = 4096, width:Int = 32) extends Component {
-
-  val ioA = slave(new SpmPort)
-  val ioB= slave(new SpmPort)
-
-  val mem= Mem(Bits(width bits),size/width)
-  // AB端口读，B端口写
-
-  ioA.read_data := mem.readSync(ioA.addr.asUInt,ioA.cs & ioA.read_or_write)
-  ioB.read_data := mem.readSync(ioB.addr.asUInt,ioB.cs & ioB.read_or_write)
-
-  mem.write(ioB.addr.asUInt,ioB.write_data,ioB.cs & ~ioB.read_or_write)
-
-}
-
-class BusInterface extends  Component{
-  val asm_line= new Bundle{
-    val stall = in Bool // 延迟信号
-    val flush = in Bool // 刷新
-    val busy = out Bool // 总线忙
-  }
-
-  val spm= new Bundle{
-    val read_data = in Bits(32 bits)
-    val addr = out Bits(7 bits)
-    val cs = out Bool
-    val read_or_write = out Bool
-    val write_data = out Bits(32 bits)
-  }
-
-  val bus= new Bundle{
-    val read_data = in Bits(32 bits)
-    val ready = in Bool
-    val grnt = in Bool
-    val req = out Bool
-    val addr = out Bits(32 bits)
-    val cs = out Bool
-    val read_or_write = out Bool
-    val write_data = out Bits(32 bits)
-  }
-}
 class Mut extends Component{
   val io=new Bundle{
     val data1 = in(SInt(32 bits))
@@ -83,7 +25,7 @@ class Mut extends Component{
 
   io.outdata := (io.data1 * io.data2).asUInt
 }
-class CPU extends Component  with BusMasterContain {
+class CPU extends Component  {
 
   val io = new Bundle{
     val inst = in Bits(GlobalConfig.dataBitsWidth)
@@ -129,11 +71,14 @@ class CPU extends Component  with BusMasterContain {
   stageCTRL <> List(if2id.ctrl,id2ex.ctrl,ex2mem.ctrl,mem2wb.ctrl)
   stageCTRL.reqFromID <> id.reqCTRL
 }
-
+class SOC2 extends Component{
+  val cpu2 = new CPU2
+}
 class SOC extends Component {
 
   val cpu = new CPU
   val rom = new InstRom
+
 
   romInitTestBNOJ()
   rom.io.inst<> cpu.io.inst
