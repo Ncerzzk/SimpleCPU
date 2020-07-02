@@ -79,47 +79,33 @@ object InstOPEnum extends SpinalEnum{  // 指令操作码枚举
 
 object OpEnum extends SpinalEnum{
   val LOGIC,ALU = newElement()
-  val funcs = List(
-    (LOGIC,OPLogic.caculate _),
-    (ALU,OPArith.caculate _)
+  val OPs = List(
+    LOGIC->OPLogic,
+    ALU->OPArith
   )
-
-  def caculate(op:Bits,opsel:Bits,oprnd1:Bits,oprnd2:Bits,left:Bits): Unit ={
-    for (i<- funcs){
-      when(op===i._1.asBits.resized){
-        i._2(opsel,oprnd1,oprnd2,left)
-      }
-    }
-  }
 }
 
-trait OPWithFunc{
-  val funcs:List[(SpinalEnumElement[_],(Bits,Bits)=>Bits)]
-
-  def caculate(opsel:Bits,oprnd1:Bits,oprnd2:Bits,left:Bits)={
-    for(i <- funcs){
-      when(opsel === i._1.asBits.resized){
-        left := i._2(oprnd1,oprnd2)
-      }
-    }
-  }
-
+trait withFuncs{
+  val funcs:List[(SpinalEnumElement[_], (Bits, Bits) => Bits)]
 }
-
-object OPArith extends SpinalEnum with OPWithFunc{
+object OPArith extends SpinalEnum with withFuncs {
   val ADDU,SUBU = newElement()
   val SLT,SLTU = newElement()
+  val MULU,MUL = newElement()
 
-  val funcs = List(
+  val funcs: List[(SpinalEnumElement[_], (Bits, Bits) => Bits)] = List(
     (ADDU,(a:Bits,b:Bits)=> (a.asUInt + b.asUInt).asBits),
     (SUBU,(a:Bits,b:Bits)=> (a.asUInt - b.asUInt).asBits),
     // SLTI => Source Less than Immediate
     (SLTU, (a:Bits, b:Bits)=> (a.asUInt < b.asUInt)?B(1,32 bits)|B(0)),
-    (SLT, (a:Bits, b:Bits) => (a.asSInt < b.asSInt)?B(1,32 bits)|B(0))
+    (SLT, (a:Bits, b:Bits) => (a.asSInt < b.asSInt)?B(1,32 bits)|B(0)),
+
+    (MULU,(a:Bits,b:Bits) => (a.asUInt*b.asUInt).asBits),
+    (MUL,(a:Bits,b:Bits) => (a.asSInt*b.asSInt).asBits)
   )
 }
 
-object OPLogic extends SpinalEnum with OPWithFunc {
+object OPLogic extends SpinalEnum with withFuncs{
   val OR,AND,XOR = newElement()
   val funcs = List(
     (OR,(a:Bits,b:Bits)=> a | b),
@@ -173,7 +159,9 @@ object IDS {
     new InstR(InstFUNCEnum.OR,OpEnum.LOGIC,OPLogic.OR),
     new InstR(InstFUNCEnum.ADDU,OpEnum.ALU,OPArith.ADDU),
     new InstR(InstFUNCEnum.SUBU,OpEnum.ALU,OPArith.SUBU),
-    new InstR(InstFUNCEnum.SLTU,OpEnum.ALU,OPArith.SLTU)
+    new InstR(InstFUNCEnum.SLTU,OpEnum.ALU,OPArith.SLTU),
+    new InstR(InstFUNCEnum.MULT,OpEnum.ALU,OPArith.MUL),
+    new InstR(InstFUNCEnum.MULTU,OpEnum.ALU,OPArith.MULU)
   )
 
   type getRsFuncType= Bits=>Bits

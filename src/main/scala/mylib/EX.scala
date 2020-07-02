@@ -13,11 +13,30 @@ class EXOut extends Bundle{
 class EX extends Component{
   val lastStage= new IDOut().flip()
   val exOut = new EXOut
+  val hi = Reg(Bits(GlobalConfig.dataBitsWidth)).init(0)
+  val lo = Reg(Bits(GlobalConfig.dataBitsWidth)).init(0)
   exOut.writeReg := lastStage.writeReg
   exOut.writeRegAddr := lastStage.writeRegAddr
   exOut.writeData :=0
 
-  OpEnum.caculate(lastStage.op,lastStage.opSel,lastStage.opRnd1,lastStage.opRnd2,exOut.writeData)
+  for(i <-OpEnum.OPs){
+    when(lastStage.op === i._1.asBits.resize(lastStage.op.getWidth)){
+      for((opsel,func) <- i._2.funcs){
+        when(lastStage.opSel === opsel.asBits.resize(lastStage.opSel.getWidth)){
+          if(opsel == OPArith.MUL || opsel== OPArith.MULU){
+
+            hi := func(lastStage.opRnd1,lastStage.opRnd2).takeHigh(GlobalConfig.dataBitsWidth.value)
+            lo := func(lastStage.opRnd1,lastStage.opRnd2).take(GlobalConfig.dataBitsWidth.value)
+          }else{
+            exOut.writeData := func(lastStage.opRnd1,lastStage.opRnd2)
+          }
+
+        }
+      }
+    }
+  }
+
+  //OpEnum.caculate(lastStage.op,lastStage.opSel,lastStage.opRnd1,lastStage.opRnd2,exOut.writeData)
 
 }
 
