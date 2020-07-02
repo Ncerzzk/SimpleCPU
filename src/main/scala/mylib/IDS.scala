@@ -79,6 +79,7 @@ object InstOPEnum extends SpinalEnum{  // 指令操作码枚举
 
 object OpEnum extends SpinalEnum{
   val LOGIC,ALU = newElement()
+
   val OPs = List(
     LOGIC->OPLogic,
     ALU->OPArith
@@ -123,19 +124,18 @@ class IDOut extends Bundle{
   val writeRegAddr = out Bits(log2Up(GlobalConfig.regNum) bits)
 }
 
-
-object IDS {
-  def OPof(inst:Bits)= inst.takeHigh(6)
-  def FUNCof(inst:Bits) = inst.take(6)
-  def RSof(inst:Bits)=inst(21 to 25)
-  def RTof(inst:Bits)=inst(16 to 20)
-
-  def isJInst(inst:Bits): Bool = (OPof(inst)===B("6'b000010")) || (OPof(inst)=== B("6'b000011"))
-
-  def isIRInst(inst:Bits):Bool = OPof(inst)=/=B(0,6 bits) && (~isJInst(inst))
-
-  def isRInst(inst:Bits):Bool={
-    val op = OPof(inst)
+case class INST(bits:Bits){
+  def op = bits.takeHigh(6)
+  def func = bits.take(6)
+  def rs:Bits=bits(21 to 25)
+  def rt:Bits=bits(16 to 20)
+  def rd=bits(11 to 15)
+  def immI = bits.take(16)
+  def immJ = bits.take(26)
+  def raw = bits
+  def isJInst:Bool = op===B("6'b000010") || op=== B("6'b000011")
+  def isIBInst:Bool = op=/=B(0,6 bits) && (~isJInst)
+  def isBInst:Bool ={
     val l = List(InstOPEnum.BEQ,InstOPEnum.BLEZ,InstOPEnum.BGTZ,InstOPEnum.BNE)
     var result :Bool = False
     val newL= for(i <- l) yield i.asBits.resize(op.getWidth) === op
@@ -144,28 +144,32 @@ object IDS {
     }
     result
   }
+}
+
+object IDS {
+
 
   val instsI = List(
-    new InstI(InstOPEnum.ORI,OpEnum.LOGIC,OPLogic.OR),
-    new InstI(InstOPEnum.ANDI,OpEnum.LOGIC,OPLogic.AND),
-    new InstI(InstOPEnum.XORI,OpEnum.LOGIC,OPLogic.XOR),
-    new InstI(InstOPEnum.ADDIU,OpEnum.ALU,OPArith.ADDU),
-    new InstI(InstOPEnum.SLTI,OpEnum.ALU,OPArith.SLT),
-    new InstI(InstOPEnum.SLTIU,OpEnum.ALU,OPArith.SLTU)
+    (InstOPEnum.ORI,OpEnum.LOGIC,OPLogic.OR),
+    (InstOPEnum.ANDI,OpEnum.LOGIC,OPLogic.AND),
+    (InstOPEnum.XORI,OpEnum.LOGIC,OPLogic.XOR),
+    (InstOPEnum.ADDIU,OpEnum.ALU,OPArith.ADDU),
+    (InstOPEnum.SLTI,OpEnum.ALU,OPArith.SLT),
+    (InstOPEnum.SLTIU,OpEnum.ALU,OPArith.SLTU)
   )
 
   val instsR = List(
-    new InstR(InstFUNCEnum.AND,OpEnum.LOGIC,OPLogic.AND),
-    new InstR(InstFUNCEnum.OR,OpEnum.LOGIC,OPLogic.OR),
-    new InstR(InstFUNCEnum.ADDU,OpEnum.ALU,OPArith.ADDU),
-    new InstR(InstFUNCEnum.SUBU,OpEnum.ALU,OPArith.SUBU),
-    new InstR(InstFUNCEnum.SLTU,OpEnum.ALU,OPArith.SLTU),
-    new InstR(InstFUNCEnum.MULT,OpEnum.ALU,OPArith.MUL),
-    new InstR(InstFUNCEnum.MULTU,OpEnum.ALU,OPArith.MULU)
+    (InstFUNCEnum.AND,OpEnum.LOGIC,OPLogic.AND),
+    (InstFUNCEnum.OR,OpEnum.LOGIC,OPLogic.OR),
+    (InstFUNCEnum.ADDU,OpEnum.ALU,OPArith.ADDU),
+    (InstFUNCEnum.SUBU,OpEnum.ALU,OPArith.SUBU),
+    (InstFUNCEnum.SLTU,OpEnum.ALU,OPArith.SLTU),
+    (InstFUNCEnum.MULT,OpEnum.ALU,OPArith.MUL),
+    (InstFUNCEnum.MULTU,OpEnum.ALU,OPArith.MULU)
   )
 
-  type getRsFuncType= Bits=>Bits
-  type getRtFuncType= Bits=>Bits
+  def RSof(inst:Bits)=inst(21 to 25)
+  def RTof(inst:Bits)=inst(16 to 20)
   val reg0=()=>B(0,6 bits).clone()
   val instsB = List(
   // 指令OP，操作数1来源，操作数2来源，转移分支的条件
@@ -174,22 +178,6 @@ object IDS {
     (InstOPEnum.BLEZ,(inst:Bits)=>RSof(inst),(inst:Bits)=>reg0(),     (a:Bits,b:Bits)=> a.asSInt <= b.asSInt),
     (InstOPEnum.BNE,(inst:Bits)=>RSof(inst),(inst:Bits)=>RTof(inst),  (a:Bits,b:Bits)=> a =/= b)
   )
-}
-
-class InstI(s:SpinalEnumElement[_]*){  // I型指令类
-  val arr= s.toList
-  assert(arr.length==3)
-  var instOP = arr(0).asBits   // 指令的指令码，与MIPS指令集相关
-  val decodeOP = arr(1).asBits  // 译码后的指令，与CPU实现相关，即OpEnum中的值
-  val decodeOPSel = arr(2).asBits // 译码后的指令子功能码，与CPU实现相关
-}
-
-class InstR(s:SpinalEnumElement[_]*){  // R型指令类
-  val arr=s.toList
-  assert(arr.length==3)
-  val instFUNC = arr(0).asBits
-  val decodeOP = arr(1).asBits
-  val deCodeOpSel = arr(2).asBits
 }
 
 class ID extends Component{
@@ -210,15 +198,8 @@ class ID extends Component{
   def <>(wb:WB): Unit  = wbBack <> wb.wbOut
   def <>(pc:PC): Unit  = pcPort <> pc.writePort
 
-
   val lastStage: IFOut = new IFOut().flip()
-
   val idOut= new IDOut
-
-  //决定立即数的符号位拓展
-  val imm:Bits = (idOut.op === OpEnum.LOGIC.asBits.resize(idOut.op.getWidth))?
-    lastStage.inst.take(16).resize(GlobalConfig.dataBitsWidth)|
-    lastStage.inst.take(16).asSInt.resize(GlobalConfig.dataBitsWidth).asBits
 
   idOut.elements.foreach(a=>{
     a._2 := (if(a._1 =="writeReg") False else B(0)) }
@@ -234,19 +215,19 @@ class ID extends Component{
   regHeap.readEns(0) := False
   regHeap.readEns(1) := False
 
-  when(IDS.isIRInst(lastStage.inst)) {
-    val targetReg = lastStage.inst(16 to 20)
-    val sourceReg = lastStage.inst(21 to 25)
-    val instOp = IDS.OPof(lastStage.inst)
+  val inst = INST(lastStage.inst)
+  //决定立即数的符号位拓展
+  val imm:Bits = (idOut.op === OpEnum.LOGIC.asBits.resize(idOut.op.getWidth))?
+    inst.immI.resize(GlobalConfig.dataBitsWidth)|
+    inst.immI.asSInt.resize(GlobalConfig.dataBitsWidth).asBits
 
-    when(IDS.isRInst(lastStage.inst)){
+  when(inst.isIBInst) {
+    when(inst.isBInst){
       val offset = lastStage.inst.take(16)
       for(i <- IDS.instsB){
-        when(instOp === i._1.asBits.resize(instOp.getWidth)){  // 确定了指令
-          val rs = i._2(lastStage.inst)
-          val rt = i._3(lastStage.inst)
-          regHeap.readAddrs(0) := rs.resized
-          regHeap.readAddrs(1) := rt.resized
+        when(inst.op === i._1.asBits.resize(inst.op.getWidth)){  // 确定了指令
+          regHeap.readAddrs(0) := inst.rs.resized
+          regHeap.readAddrs(1) := inst.rt.resized
           when(i._4(idOut.opRnd1,idOut.opRnd2)){
             val newPC = offset.asSInt.resize(GlobalConfig.dataBitsWidth)+lastStage.pc.asSInt+1
             pcPort.writeEN := True
@@ -259,22 +240,21 @@ class ID extends Component{
       regHeap.readEns(0) := True
       regHeap.readEns(1) := True
     }otherwise{
-      for (i <- IDS.instsI) {
-        when(i.instOP.asBits.resize(instOp.getWidth) === instOp) {
-          idOut.op := i.decodeOP.resized
-          idOut.opSel := i.decodeOPSel.resized
+      for ((instop,decodeOP,decodeOPSel) <- IDS.instsI) {
+        when(instop.asBits.resize(inst.op.getWidth) === inst.op) {
+          idOut.op := decodeOP.asBits.resized
+          idOut.opSel := decodeOPSel.asBits.resized
         }
       }
-      idOut.writeRegAddr := targetReg
+      idOut.writeRegAddr := inst.rt
       idOut.writeReg := True
       regHeap.readEns(0) := True
       regHeap.readEns(1) := False
-      regHeap.readAddrs(0) := sourceReg
+      regHeap.readAddrs(0) := inst.rs
     }
 
-  }elsewhen(IDS.isJInst(lastStage.inst)){
-    val targetAddress = lastStage.inst.take(26)
-    val newPC =  (lastStage.pc.asUInt+1).asBits.takeHigh(6) ## targetAddress
+  }elsewhen(inst.isJInst){
+    val newPC =  (lastStage.pc.asUInt+1).asBits.takeHigh(6) ## inst.immJ
     pcPort.writeEN := True
     pcPort.writeData := newPC
     //reqCTRL.stateOut := StageStateEnum.FLUSH
@@ -286,25 +266,20 @@ class ID extends Component{
 */
 
   }otherwise{
-    val targetReg= lastStage.inst(16 to 20)  //rt
-    val sourceReg= lastStage.inst(21 to 25)  //rs
-    val destinationReg = lastStage.inst(11 to 15)  //rd
-
-    val FUNC = IDS.FUNCof(lastStage.inst)
-    for(i<- IDS.instsR){
-      when(FUNC === i.instFUNC.resized){
-        idOut.op := i.decodeOP.resized
-        idOut.opSel := i.deCodeOpSel.resized
+    for((instfunc,decodeOP,decodeOPSel)<- IDS.instsR){
+      when(inst.func === instfunc.asBits.resized){
+        idOut.op := decodeOP.asBits.resized
+        idOut.opSel := decodeOPSel.asBits.resized
       }
     }
     // TODO：
     // 有些指令如MOVN，最终未必会写入寄存器
-    idOut.writeRegAddr := destinationReg
+    idOut.writeRegAddr := inst.rd
     idOut.writeReg := True
     regHeap.readEns(0) := True
     regHeap.readEns(1) := True
-    regHeap.readAddrs(0) :=sourceReg
-    regHeap.readAddrs(1) :=targetReg
+    regHeap.readAddrs(0) :=inst.rs
+    regHeap.readAddrs(1) :=inst.rt
   }
 
 
@@ -317,21 +292,11 @@ class ID extends Component{
       rnd := regHeap.readDatas(i)
       when(exBack.writeReg && exBack.writeRegAddr===regHeap.readAddrs(i)){
         rnd := exBack.writeData
-      }
-      when(memBack.writeReg && memBack.writeRegAddr===regHeap.readAddrs(i)){
+      }elsewhen(memBack.writeReg && memBack.writeRegAddr===regHeap.readAddrs(i)) {
         rnd := memBack.writeData
-      }
-      when(wbBack.writeEn && wbBack.writeAddr===regHeap.readAddrs(i)){
+      }elsewhen(wbBack.writeEn && wbBack.writeAddr===regHeap.readAddrs(i)){
         rnd := wbBack.writeData
       }
-      /*
-      rnd := regHeap.readAddrs(i).mux(
-        exBack.writeRegAddr -> exBack.writeData,
-        memBack.writeRegAddr -> memBack.writeData,
-        wbBack.writeAddr -> wbBack.writeData,
-        default ->regHeap.readDatas(i)
-      )
-       */
     }otherwise{
       rnd := imm
     }

@@ -1,5 +1,6 @@
 package mylib
 
+import mylib.OPArith.{ADDU, MUL, MULU, SLT, SLTU, SUBU}
 import spinal.core._
 import spinal.lib.master
 
@@ -19,12 +20,21 @@ class EX extends Component{
   exOut.writeRegAddr := lastStage.writeRegAddr
   exOut.writeData :=0
 
+  //val LOGIC = for ((opsel,func) <- OPLogic.funcs)
+    //yield opsel.asBits.resize(lastStage.opSel.getWidth)->func(lastStage.opRnd1,lastStage.opRnd2)
+/*
+  exOut.writeData := lastStage.op.mux(
+    OpEnum.ALU.asBits.resize(lastStage.op.getWidth)->lastStage.opSel.muxList(ALU),
+    OpEnum.LOGIC.asBits.resize(lastStage.op.getWidth)->lastStage.opSel.muxList(LOGIC)
+  )
+  */
+
+
   for(i <-OpEnum.OPs){
     when(lastStage.op === i._1.asBits.resize(lastStage.op.getWidth)){
       for((opsel,func) <- i._2.funcs){
         when(lastStage.opSel === opsel.asBits.resize(lastStage.opSel.getWidth)){
           if(opsel == OPArith.MUL || opsel== OPArith.MULU){
-
             hi := func(lastStage.opRnd1,lastStage.opRnd2).takeHigh(GlobalConfig.dataBitsWidth.value)
             lo := func(lastStage.opRnd1,lastStage.opRnd2).take(GlobalConfig.dataBitsWidth.value)
           }else{
@@ -35,6 +45,7 @@ class EX extends Component{
       }
     }
   }
+
 
   //OpEnum.caculate(lastStage.op,lastStage.opSel,lastStage.opRnd1,lastStage.opRnd2,exOut.writeData)
 

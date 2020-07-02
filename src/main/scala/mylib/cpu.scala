@@ -83,8 +83,22 @@ class Mut extends Component{
 
   io.outdata := (io.data1 * io.data2).asUInt
 }
-class CPU extends Component  with BusMasterContain {
 
+class test extends Component{
+  val op1,op2 = in Bits(32 bits)
+  val sel = in Bits(3 bits)
+  val o = out Bits(32 bits)
+  o:=sel.mux(
+    1->(op1 & op2),
+    2->(op1 | op2),
+    3->(op1 ^ op2),
+    default-> B(0)
+  )
+
+}
+class CPU extends Component  with BusMasterContain {
+  val t =new test
+  val a = IDS.RSof(B(32,32 bits))
   val io = new Bundle{
     val inst = in Bits(GlobalConfig.dataBitsWidth)
     val romEn = out Bool
@@ -135,7 +149,7 @@ class SOC extends Component {
   val cpu = new CPU
   val rom = new InstRom
 
-  romInitTestMUL()
+  romInitTestBNOJ()
   rom.io.inst<> cpu.io.inst
   rom.io.en <> cpu.io.romEn
   rom.io.addr<> cpu.io.romAddr
