@@ -1,4 +1,4 @@
-package mylib
+//package mylib
 
 import scala.collection.mutable
 
@@ -23,11 +23,11 @@ object interpreter {
   MIPSInst("blez",    0x6,      OPSpecial,        List(S,T,I2)      )
   MIPSInst("bne",     0x5,      OPSpecial,        List(S,T,I2)      )
 
-
+/*
   def apply(str:String): Iterator[String] ={
-    for(line <- str.lines) yield singleInst(line)
+    for(line:String <- str.lines) yield singleInst(line)
   }
-
+*/
   def regToNum(str:String): Int =str.replace("$","").trim.toInt
 
   def singleInst(str:String) ={

@@ -8,72 +8,13 @@ object GlobalConfig{
   val spmCellNum:Int = 4096/dataBitsWidth.value
   val regNum = 32
   val instRomCellNum:Int = 16
-
+  val ramRegNum = 64
 }
 
 object FlowStateEnum extends SpinalEnum(defaultEncoding = binarySequential) with NeedNBits{
   val NORMAL,REFRESH,DELAY = newElement()
 }
 
-
-
-
-class SpmPort extends Bundle with IMasterSlave{
-  val addr =  Bits(log2Up(GlobalConfig.spmCellNum) bits)
-  val cs =  Bool
-  val read_or_write =  Bool
-  val write_data=  Bits(GlobalConfig.dataBitsWidth)
-  val read_data =  Bits(GlobalConfig.dataBitsWidth)
-
-  override def asMaster(): Unit = {
-    out(addr,cs,read_or_write,write_data)
-    in(read_data)
-  }
-
-
-}
-
-class Spm(size :Int = 4096, width:Int = 32) extends Component {
-
-  val ioA = slave(new SpmPort)
-  val ioB= slave(new SpmPort)
-
-  val mem= Mem(Bits(width bits),size/width)
-  // AB端口读，B端口写
-
-  ioA.read_data := mem.readSync(ioA.addr.asUInt,ioA.cs & ioA.read_or_write)
-  ioB.read_data := mem.readSync(ioB.addr.asUInt,ioB.cs & ioB.read_or_write)
-
-  mem.write(ioB.addr.asUInt,ioB.write_data,ioB.cs & ~ioB.read_or_write)
-
-}
-
-class BusInterface extends  Component{
-  val asm_line= new Bundle{
-    val stall = in Bool // 延迟信号
-    val flush = in Bool // 刷新
-    val busy = out Bool // 总线忙
-  }
-
-  val spm= new Bundle{
-    val read_data = in Bits(32 bits)
-    val addr = out Bits(7 bits)
-    val cs = out Bool
-    val read_or_write = out Bool
-    val write_data = out Bits(32 bits)
-  }
-
-  val bus= new Bundle{
-    val read_data = in Bits(32 bits)
-    val ready = in Bool
-    val grnt = in Bool
-    val req = out Bool
-    val addr = out Bits(32 bits)
-    val cs = out Bool
-    val read_or_write = out Bool
-    val write_data = out Bits(32 bits)
-  }
-}
 class Mut extends Component{
   val io=new Bundle{
     val data1 = in(SInt(32 bits))
@@ -97,8 +38,8 @@ class test extends Component{
 
 }
 class CPU extends Component  with BusMasterContain {
-  val t =new test
   val a = IDS.RSof(B(32,32 bits))
+  val ram =new Ram(GlobalConfig.ramRegNum)
   val io = new Bundle{
     val inst = in Bits(GlobalConfig.dataBitsWidth)
     val romEn = out Bool
@@ -142,6 +83,8 @@ class CPU extends Component  with BusMasterContain {
 
   stageCTRL <> List(if2id.ctrl,id2ex.ctrl,ex2mem.ctrl,mem2wb.ctrl)
   stageCTRL.reqFromID <> id.reqCTRL
+
+  ram.io <> mem.ramPort
 }
 
 class SOC extends Component {
@@ -149,7 +92,7 @@ class SOC extends Component {
   val cpu = new CPU
   val rom = new InstRom
 
-  romInitTestBNOJ()
+  romInitTestStore()
   rom.io.inst<> cpu.io.inst
   rom.io.en <> cpu.io.romEn
   rom.io.addr<> cpu.io.romAddr
@@ -266,4 +209,35 @@ class SOC extends Component {
     rom.init(romInitVal)
   }
 
+  def romInitTestLoad():Unit = {
+    /*
+    nop
+	LB $1,01($0)
+	LH $2,02($0)
+	LW $3,04($0)
+     */
+    val inits=List(B(0),B("32'h80010001"),B("32'h84020002"),B("32'h8c030004"))
+    val romInitVal=inits++List.fill(GlobalConfig.instRomCellNum-inits.length)(B(0))
+    rom.init(romInitVal)
+  }
+
+  def romInitTestStore():Unit = {
+    /*
+	addi $1,100
+	addi $2,0xFF01
+	addi $3,0x200
+
+	sb $1,0($0)
+	sh $2,2($0)
+	sw $3,4($0)
+	lw $4,0($0)
+	lw $5,4($0)
+     */
+    val inits=List(B("32'h20210064"),B("32'h2042ff01"),B("32'h20630200"),
+      B("32'ha0010000"),B("32'ha4020002"),B("32'hac030004"),
+      B("32'h8c040000"),B("32'h8c050004")
+    )
+    val romInitVal=inits++List.fill(GlobalConfig.instRomCellNum-inits.length)(B(0))
+    rom.init(romInitVal)
+  }
 }

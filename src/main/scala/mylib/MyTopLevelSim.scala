@@ -55,7 +55,7 @@ object SocTestBasic{
       sleep(10)
       dut.clockDomain.deassertReset()
       dut.clockDomain.fallingEdge()
-      for(i <- 0 to 10){
+      for(i <- 0 to 20){
         dut.clockDomain.waitSampling()
       }
 
