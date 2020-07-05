@@ -38,7 +38,7 @@ class test extends Component{
 
 }
 class CPU extends Component  with BusMasterContain {
-  val a = IDS.RSof(B(32,32 bits))
+
   val ram =new Ram(GlobalConfig.ramRegNum)
   val io = new Bundle{
     val inst = in Bits(GlobalConfig.dataBitsWidth)
@@ -92,7 +92,7 @@ class SOC extends Component {
   val cpu = new CPU
   val rom = new InstRom
 
-  romInitTestStore()
+  romInitTestB()
   rom.io.inst<> cpu.io.inst
   rom.io.en <> cpu.io.romEn
   rom.io.addr<> cpu.io.romAddr
@@ -159,6 +159,14 @@ class SOC extends Component {
   }
 
   def romInitTestJ():Unit = {
+    /*
+0   nop
+4   addiu $1, $0, 0x1100
+8   j 20
+12  addiu $2, $0, 0x0111
+16  and   $3, $1 ,$2
+20  or    $4, $1, $2
+ */
     val inits=List(B(0),B("32'h24011100"),B("32'h08000005"),B("32'h24020111"),B("32'h00221824"),
       B("32'h00222025"))
     val romInitVal=inits++List.fill(GlobalConfig.instRomCellNum-inits.length)(B(0))
