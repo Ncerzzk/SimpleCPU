@@ -1,6 +1,7 @@
 package mylib
 
 import spinal.core._
+import spinal.lib.bus.bmb.BmbParameter.BurstAlignement.WORD
 import spinal.lib.{IMasterSlave, slave}
 
 class RegHeapReadPort(regNum:Int=32) extends Bundle with IMasterSlave {
@@ -18,10 +19,15 @@ class RegHeapWritePort(regNum:Int=32) extends Bundle with IMasterSlave {
   val writeEn = Bool
   val writeAddr =Bits(log2Up(regNum) bits)
   val writeData = Bits(GlobalConfig.dataBitsWidth)
+  val writeType = RegWriteType()
 
   override def asMaster(): Unit = {
-    out(writeEn,writeAddr,writeData)
+    out(writeEn,writeAddr,writeData,writeType)
   }
+}
+
+object RegWriteType extends SpinalEnum{
+  val WORD,HIGH_HALF,LOW_HALF=newElement()
 }
 
 class RegHeap(regNum: Int = 32) extends  Component {
@@ -34,7 +40,23 @@ class RegHeap(regNum: Int = 32) extends  Component {
   readPort.readDatas(1) := 0
 
   when(writePort.writeEn && (writePort.writeAddr =/= B(0))){
-      heap(writePort.writeAddr.asUInt) := writePort.writeData
+    switch(writePort.writeType){
+      is(RegWriteType.WORD){
+        heap(writePort.writeAddr.asUInt) := writePort.writeData
+      }
+      is(RegWriteType.HIGH_HALF){
+        heap(writePort.writeAddr.asUInt) :=
+          writePort.writeData.take(GlobalConfig.dataBitsWidth.value/2) ##
+          heap(writePort.writeAddr.asUInt).take(GlobalConfig.dataBitsWidth.value/2)
+      }
+      is(RegWriteType.LOW_HALF){
+        heap(writePort.writeAddr.asUInt) :=
+          heap(writePort.writeAddr.asUInt).takeHigh(GlobalConfig.dataBitsWidth.value/2) ##
+            writePort.writeData.take(GlobalConfig.dataBitsWidth.value/2)
+      }
+    }
+
+
   }otherwise{
     for(i <- 0 until 2){
       when(readPort.readEns(i)) {

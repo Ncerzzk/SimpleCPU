@@ -13,6 +13,7 @@ class EXOut extends Bundle{
   val opSel = out Bits(8 bits) //运算子类型
 
   val loadStoreAddr = out Bits(GlobalConfig.dataBitsWidth) // 用于存放load store指令中，计算完的地址
+  val writeRegType = out(RegWriteType())          // 增加用于 Loadhi loadlo
 }
 
 class EX extends Component{
@@ -24,6 +25,7 @@ class EX extends Component{
   exOut.writeRegAddr := lastStage.writeRegAddr
   exOut.writeData := 0
   exOut.loadStoreAddr := 0
+  exOut.writeRegType := RegWriteType.WORD
 
   exOut.op := lastStage.op // 继续往Mem传
   exOut.opSel := lastStage.opSel
@@ -41,6 +43,19 @@ class EX extends Component{
     exOut.loadStoreAddr := (lastStage.opRnd1.asSInt + inst.immI.asSInt.resize(GlobalConfig.dataBitsWidth)).asBits
     exOut.writeData := lastStage.opRnd2 // writeData此时存放着store要写入内存的值，如果是load，则此值无意义
 
+    when(lastStage.opSel === OPLoad.LOADHI.asBits.resized){
+      exOut.writeRegType := RegWriteType.HIGH_HALF
+    }elsewhen(lastStage.opSel === OPLoad.LOADLO.asBits.resized){
+      exOut.writeRegType := RegWriteType.LOW_HALF
+    }elsewhen(lastStage.opSel === OPLoad.MFHI.asBits.resized){
+      exOut.writeData := hi
+    }elsewhen(lastStage.opSel === OPLoad.MFLO.asBits.resized){
+      exOut.writeData := lo
+    }elsewhen(lastStage.opSel === OPLoad.MTHI.asBits.resized){
+      hi := lastStage.opRnd1
+    }elsewhen(lastStage.opSel === OPLoad.MTLO.asBits.resized){
+      lo := lastStage.opRnd1
+    }
   }otherwise {
     for (i <- OpEnum.OPs) {
       when(lastStage.op === i._1.asBits.resize(lastStage.op.getWidth)) {
@@ -68,6 +83,8 @@ class MEMOut extends Bundle{
   val writeReg = out Bool
   val writeRegAddr = out Bits(log2Up(GlobalConfig.regNum) bits)
   val writeData = out Bits(GlobalConfig.dataBitsWidth)
+
+  val writeRegType = out(RegWriteType())
 }
 
 class MEM extends Component{
@@ -76,6 +93,8 @@ class MEM extends Component{
   val memOut = new MEMOut
 
   val ramPort = Ram.masterPort(GlobalConfig.ramRegNum)
+
+  memOut.writeRegType := lastStage.writeRegType  // 继续往WB传
 
   ramPort.writeData := B(0).resized
   ramPort.writeEn := False
@@ -125,6 +144,7 @@ class WB extends Component{
   wbOut.writeAddr := lastStage.writeRegAddr
   wbOut.writeData := lastStage.writeData
   wbOut.writeEn := lastStage.writeReg
+  wbOut.writeType := lastStage.writeRegType
 
   def <>(regHeap: RegHeap)={
     wbOut <> regHeap.writePort

@@ -22,74 +22,6 @@ object InstTypeEnum extends SpinalEnum{
   // I型指令直接靠高6位区分功能
 }
 
-object InstFUNCEnum extends SpinalEnum{ // 指令功能码枚举
-  val AND,OR,XOR,NOR= newElement()
-  val SLL,SRL,SRA,SLLV,SRLV,SRAV = newElement()
-  val MOVN,MOVZ,MFHI,MFLO,MTHI,MTLO = newElement()
-  val ADDU,SUBU,SLTU = newElement()
-
-  val MULT,MULTU = newElement()
-  defaultEncoding = SpinalEnumEncoding("static")(
-    AND -> 0x24 ,
-    OR -> 0x25,
-    XOR ->0x26,
-    NOR ->0x27,
-
-    SLL->0x0,
-    SRL->0x2,
-    SRA->0x3,
-    SLLV->0x4,
-    SRLV->0x6,
-    SRAV->0x7,
-
-    MOVN->0xB,
-    MOVZ->0xA,
-    MFHI->0x10,
-    MFLO->0x12,
-    MTHI->0x11,
-    MTLO->0x13,
-
-    ADDU->0x21,
-    SUBU->0x23,
-    SLTU->0x2B,
-
-    MULT->0x18,
-    MULTU->0x19
-  )
-}
-
-object InstOPEnum extends SpinalEnum{  // 指令操作码枚举
-  val ORI,ANDI,XORI,ADDI,ADDIU,SLTI,SLTIU= newElement()
-  val BEQ,BGTZ,BLEZ,BNE = newElement()
-  val LB,LBU,LH,LHU,LW =newElement()
-  val SB,SH,SW=newElement()
-  defaultEncoding = SpinalEnumEncoding("static")(
-    ORI -> 0xD ,// 001101
-    ANDI -> 0xC,
-    XORI ->0xE,
-    ADDI ->0x8,
-    ADDIU->0x9,
-    SLTI -> 0xA,
-    SLTIU->0xB,
-
-    // 以下为分支语句
-    BEQ->0x4,
-    BGTZ->0x7,
-    BLEZ->0x6,
-    BNE->0x5,
-
-    // 以下为加载存储指令
-    LB -> 0x20,
-    LBU->0x24,
-    LH->0x21,
-    LHU->0x25,
-    LW->0x23,
-    SB->0x28,
-    SH->0x29,
-    SW->0x2B
-
-  )
-}
 
 object OpEnum extends SpinalEnum{
   val LOGIC,ALU,LOAD,STORE = newElement()
@@ -126,17 +58,25 @@ object OPArith extends SpinalEnum with withFuncs {
 
 object OPLogic extends SpinalEnum with withFuncs{
   val OR,AND,XOR,NOR = newElement()
+  val LEFT_SHIFT = newElement()
+  val RIGHT_SHIFT_LOGIC,RIGHT_SHIFT_ARITH = newElement()
   val funcs = List(
     (OR,(a:Bits,b:Bits)=>   a | b),
     (AND,(a:Bits,b:Bits)=>  a & b),
     (XOR,(a:Bits,b:Bits)=>  a ^ b),
-    (NOR,(a:Bits,b:Bits)=> ~(a | b))
+    (NOR,(a:Bits,b:Bits)=> ~(a | b)),
+    (LEFT_SHIFT,(a:Bits,b:Bits) => a |<< b.asUInt),   // 左移只有一种
+    (RIGHT_SHIFT_LOGIC,(a:Bits,b:Bits) => a |>> b.asUInt),
+    (RIGHT_SHIFT_ARITH,(a:Bits,b:Bits) => a >> b.asUInt)
   )
 }
 
 object OPLoad extends SpinalEnum {
-  val LOADBYTE,LOADHWORD,LOADWORD=newElement()
+  val LOADBYTE,LOADHWORD,LOADWORD=newElement() // 这四个指令从某个内存地址读出数据，写入某个寄存器
   val LOADBYTEU,LOADHWORDU=newElement()
+  val LOADHI,LOADLO=newElement()   // 这两个指令是写入某个寄存器的高16位或者低16位（数据来源是立即数）
+  val MFHI,MFLO = newElement()
+  val MTLO,MTHI = newElement()
 }
 object OPStore extends SpinalEnum{
   val STOREBYTE,STOREHWORD,STOREWORD=newElement()
@@ -159,7 +99,7 @@ class IDOut extends Bundle{
 }
 
 case class INST(bits:Bits){
-  import InstOPEnum._
+  //import InstOPEnum._
   def op = bits.takeHigh(6)
   def func = bits.take(6)
   def rs:Bits=bits(21 to 25)
@@ -167,6 +107,7 @@ case class INST(bits:Bits){
   def rd=bits(11 to 15)
   def immI = bits.take(16)
   def immJ = bits.take(26)
+  def immA = bits(6 to 10)
   def raw = bits
   def OPMatters : Bool = op =/=B(0,6 bits)
   def FUNCMatters :Bool = ~OPMatters
@@ -177,16 +118,6 @@ case class INST(bits:Bits){
   def isSInst:Bool = isXInst(IDS.instsS)
   def isLSInst:Bool = isXInst(IDS.instsLoadStore)
   */
-
-  def isBInst:Bool ={
-    val l = List(InstOPEnum.BEQ,InstOPEnum.BLEZ,InstOPEnum.BGTZ,InstOPEnum.BNE)
-    var result :Bool = False
-    val newL= for(i <- l) yield i.asBits.resize(op.getWidth) === op
-    for(i <-newL){
-      result = result|i
-    }
-    result
-  }
 
   def isXInst(a:immutable.Seq[(SpinalEnumElement[_],(_))]):Bool={
     var result :Bool = False
@@ -227,6 +158,8 @@ class ID extends Component{
     pcPort.writeData := target.resized
   }
 
+  val use_imma = False
+
   def doDecode(instsList:immutable.Seq[(MaskedLiteral, Map[Actions, _])]) ={
     for (i <- instsList){
       when(inst.raw === i._1){
@@ -259,6 +192,8 @@ class ID extends Component{
               })
               JMP(target)
             }
+          }else if(action == IMMA_USE){
+              use_imma := True
           }
         }
       }
@@ -308,7 +243,12 @@ class ID extends Component{
         rnd := wbBack.writeData
       }
     }otherwise{
-      rnd := imm
+      when(use_imma){
+        rnd := inst.immA.resized
+      }otherwise{
+        rnd := imm
+      }
+
     }
     i+=1
   }

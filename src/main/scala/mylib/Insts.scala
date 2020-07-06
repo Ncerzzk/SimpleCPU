@@ -19,12 +19,14 @@ object BRANCH_CONDITION extends Actions
 object BRANCH_OPRND2 extends Actions // 只需要设置2，因为OPRN1默认都是寄存器的值
 object WRITE_PC extends Actions
 object BRANCH_TARGET extends Actions
+object IMMA_USE extends Actions    // 表示是否使用IMMA作为操作数2，移位运算用
 
 object RS extends Arguments
 object RT extends Arguments
 object RD extends Arguments
 
-object IMMJ_ABSOLUTE extends Arguments
+
+object IMMJ_ABSOLUTE extends Arguments  // 这两个是跳转用
 object IMMI_RELATIVE extends Arguments
 object REG  extends Arguments
 case class RAW_BITS(b:Bits) extends Arguments
@@ -61,7 +63,7 @@ object Insts{
 
   def XORI    = M"001110--_--------_--------_--------"
   def LHI     = M"011001--_--------_--------_--------"
-  def LHO     = M"011000--_--------_--------_--------"
+  def LLO     = M"011000--_--------_--------_--------"
 
   def SLT     = M"000000--_--------_--------_--101010"
   def SLTU    = M"000000--_--------_--------_--101001"
@@ -171,7 +173,46 @@ object Insts{
     SLT ->  (RActions ++ HashMap(INST_OP-> OpEnum.ALU,INST_OPSEL->OPArith.SLT)),
     SLTU -> (RActions ++ HashMap(INST_OP-> OpEnum.ALU,INST_OPSEL->OPArith.SLTU)),
     MULT -> (RActions ++ HashMap(INST_OP-> OpEnum.ALU,INST_OPSEL->OPArith.MUL)),
-    MULTU -> (RActions ++ HashMap(INST_OP-> OpEnum.ALU,INST_OPSEL->OPArith.MULU))
+    MULTU -> (RActions ++ HashMap(INST_OP-> OpEnum.ALU,INST_OPSEL->OPArith.MULU)),
+
+    SLLV -> (RActions ++ HashMap(
+      INST_OP-> OpEnum.LOGIC,
+      INST_OPSEL->OPLogic.LEFT_SHIFT,
+      READ_REG0_ADDR -> RT,
+      READ_REG1_ADDR -> RS
+    )),
+    SRAV -> (RActions ++ HashMap(
+      INST_OP-> OpEnum.LOGIC,
+      INST_OPSEL->OPLogic.RIGHT_SHIFT_ARITH,
+      READ_REG0_ADDR -> RT,
+      READ_REG1_ADDR -> RS
+    )),
+    SRLV -> (RActions ++ HashMap(
+      INST_OP-> OpEnum.LOGIC,
+      INST_OPSEL->OPLogic.RIGHT_SHIFT_LOGIC,
+      READ_REG0_ADDR -> RT,
+      READ_REG1_ADDR -> RS
+    )),
+
+    SLL -> (RActions ++ HashMap(
+      INST_OP-> OpEnum.LOGIC,
+      INST_OPSEL->OPLogic.LEFT_SHIFT,
+      READ_REG1 -> False,
+      IMMA_USE -> True
+    )),
+    SRA -> (RActions ++ HashMap(
+      INST_OP-> OpEnum.LOGIC,
+      INST_OPSEL->OPLogic.RIGHT_SHIFT_ARITH,
+      READ_REG1 -> False,
+      IMMA_USE -> True
+    )),
+    SRL -> (RActions ++ HashMap(
+      INST_OP-> OpEnum.LOGIC,
+      INST_OPSEL->OPLogic.RIGHT_SHIFT_LOGIC,
+      READ_REG1 -> False,
+      IMMA_USE -> True
+    ))
+
   )
 
   def JInsts= List(
@@ -197,7 +238,48 @@ object Insts{
   def LInsts =List(
     LB->(LActions++ HashMap(INST_OPSEL->OPLoad.LOADBYTE)),
     LW->(LActions++ HashMap(INST_OPSEL->OPLoad.LOADWORD)),
-    LH->(LActions++ HashMap(INST_OPSEL->OPLoad.LOADHWORDU))
+    LH->(LActions++ HashMap(INST_OPSEL->OPLoad.LOADHWORDU)),
+
+    MFHI->HashMap(
+      INST_OP -> OpEnum.LOAD,
+      INST_OPSEL -> OPLoad.MFHI,
+      WRITE_REG -> True,
+      WRITE_REG_ADDR -> RD
+    ),
+
+    MFLO->HashMap(
+      INST_OP -> OpEnum.LOAD,
+      INST_OPSEL -> OPLoad.MFLO,
+      WRITE_REG -> True,
+      WRITE_REG_ADDR -> RD
+    ),
+
+    MTHI->HashMap(
+      INST_OP -> OpEnum.LOAD,
+      INST_OPSEL -> OPLoad.MTHI,
+      READ_REG0 -> True,
+      READ_REG0_ADDR -> RS
+    ),
+
+    MTLO->HashMap(
+      INST_OP -> OpEnum.LOAD,
+      INST_OPSEL -> OPLoad.MTLO,
+      READ_REG0 -> True,
+      READ_REG0_ADDR -> RS
+    ),
+
+    LHI ->HashMap(    // 这两个指令比较特别，重新写
+      INST_OP -> OpEnum.LOAD,
+      INST_OPSEL -> OPLoad.LOADHI,
+      WRITE_REG -> True,
+      WRITE_REG_ADDR -> RT
+    ),
+    LLO ->HashMap(    // 这两个指令比较特别，重新写
+      INST_OP -> OpEnum.LOAD,
+      INST_OPSEL -> OPLoad.LOADLO,
+      WRITE_REG -> True,
+      WRITE_REG_ADDR -> RT
+    )
   )
 
   def SInsts=List(

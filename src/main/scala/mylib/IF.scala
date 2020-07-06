@@ -73,6 +73,9 @@ class Stage[T <: Bundle](gen: => T) extends Component{
         a match{
           case s:Bits => s.init(0)
           case b:Bool => b.init(False)
+          case e:SpinalEnumCraft[_] =>
+            val a =e.spinalEnum.elements(0)
+            e.asInstanceOf[e.spinalEnum.C].init(a)
         }
         valCallbackRec(a,i._1)
         when(ctrl.stateOut===StageStateEnum.ENABLE){
@@ -81,6 +84,9 @@ class Stage[T <: Bundle](gen: => T) extends Component{
           a match {
             case s:Bits => s:=B(0)
             case b:Bool => b:=False
+            case e:SpinalEnumCraft[_] =>
+              val a =e.spinalEnum.elements(0)
+              e.asInstanceOf[e.spinalEnum.C] := a
           }
         }
 
