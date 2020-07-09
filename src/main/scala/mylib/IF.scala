@@ -45,7 +45,7 @@ class StageCTRL extends Component{
   val reqFromID= slave(new StageCTRLBundle())
 
   def <>(a:List[StageCTRLBundle]):Unit={
-    for(i <- 0 until 4){
+    for(i <- a.indices){
       a(i) <> slaves(i)
     }
   }
@@ -66,10 +66,33 @@ class Stage[T <: Bundle](gen: => T) extends Component{
     r<>right
   }
 
+  def getInitData[T <: Data](data:T):Data={
+    data match {
+      case a:Bits => B(0)
+      case b:Bool => False
+      case e:SpinalEnumCraft[_] => e.spinalEnum.elements(0)
+    }
+  }
+  def defaultData[T <: Data](data:T): Unit={
+    data match {
+      case v:Vec[_] => v.foreach(a=>initData(a))
+      case a => a:= getInitData(a).asInstanceOf[T]
+    }
+  }
+  def initData[T <: Data](data:T): Unit ={
+    data match {
+      case v:Vec[_] => v.foreach(a=>initData(a))
+      case a => a.init(getInitData(a).asInstanceOf[T])
+    }
+  }
+
   def createOutPort(inBundle:Bundle):T= {
     new Bundle {
       for(i <- inBundle.elements){
+
         val a =out (Reg(i._2.clone()))
+        initData(a)
+        /*
         a match{
           case s:Bits => s.init(0)
           case b:Bool => b.init(False)
@@ -77,10 +100,14 @@ class Stage[T <: Bundle](gen: => T) extends Component{
             val a =e.spinalEnum.elements(0)
             e.asInstanceOf[e.spinalEnum.C].init(a)
         }
+
+         */
         valCallbackRec(a,i._1)
         when(ctrl.stateOut===StageStateEnum.ENABLE){
           a := i._2
         }otherwise{
+          defaultData(a)
+/*
           a match {
             case s:Bits => s:=B(0)
             case b:Bool => b:=False
@@ -88,6 +115,8 @@ class Stage[T <: Bundle](gen: => T) extends Component{
               val a =e.spinalEnum.elements(0)
               e.asInstanceOf[e.spinalEnum.C] := a
           }
+*/
+
         }
 
       }

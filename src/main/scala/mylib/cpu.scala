@@ -70,18 +70,20 @@ class CPU extends Component  with BusMasterContain {
   val mem = new MEM()
   ex2mem <>(ex.exOut,mem.lastStage)
 
+  ex <> ex2mem
+  ex <> regs
 
-  val mem2wb = new Stage(new MEMOut())
-  val wb = new WB()
-  mem2wb <> (mem.memOut,wb.lastStage)
-
-  wb<>regs
+  //val mem2wb = new Stage(new MEMOut())
+  //val wb = new WB()
+  //mem2wb <> (mem.memOut,wb.lastStage)
+  mem<>regs
+  //wb<>regs
 
   id <> ex
-  id <> mem
-  id <> wb
+  //id <> mem
+  //id <> wb
 
-  stageCTRL <> List(if2id.ctrl,id2ex.ctrl,ex2mem.ctrl,mem2wb.ctrl)
+  stageCTRL <> List(if2id.ctrl,id2ex.ctrl,ex2mem.ctrl)
   stageCTRL.reqFromID <> id.reqCTRL
 
   ram.io <> mem.ramPort
@@ -92,7 +94,7 @@ class SOC extends Component {
   val cpu = new CPU
   val rom = new InstRom
 
-  romInitTestB()
+  romInitTestBack2gap()
   rom.io.inst<> cpu.io.inst
   rom.io.en <> cpu.io.romEn
   rom.io.addr<> cpu.io.romAddr
@@ -113,6 +115,12 @@ class SOC extends Component {
   }
 
   def romInitTestAnd0gap()={
+    /*
+    ori $1,$0,0x1100   -> $1 = 0x1100
+    ori $2,$1,0x11     -> $2 = 0x1111
+    andi $1,$2,0x10    -> $1 = 0x0010
+    xori $2,$1,0x1000  -> $2 = 0x1010
+     */
     val inits=List(B(0),B("32'h34011100"),B("32'h34220011"),B("32'h30410010"),B("32'h38221000"))
     val romInitVal=inits++List.fill(GlobalConfig.instRomCellNum-inits.length)(B(0))
     rom.init(romInitVal)
@@ -182,7 +190,7 @@ class SOC extends Component {
     and   $3, $1 ,$2
     or    $4, $1, $2
      */
-    val inits=List(B(0),B("32'h24011100"),B("32'h10000002"),B("32'h24020111"),B("32'h00221824"),
+    val inits=List(B("32'h24011100"),B("32'h10000002"),B("32'h24020111"),B("32'h00221824"),
       B("32'h00222025"))
     val romInitVal=inits++List.fill(GlobalConfig.instRomCellNum-inits.length)(B(0))
     rom.init(romInitVal)

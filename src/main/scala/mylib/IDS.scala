@@ -82,7 +82,7 @@ object OPStore extends SpinalEnum{
   val STOREBYTE,STOREHWORD,STOREWORD=newElement()
 }
 
-class IDOut extends Bundle{
+class IDOut extends Bundle {
   val op = out Bits( 3 bits)     // 运算类型
   val opSel = out Bits(8 bits) //运算子类型
   val opRnd1 = out Bits(GlobalConfig.dataBitsWidth)
@@ -96,6 +96,27 @@ class IDOut extends Bundle{
   // 那么rt的值就没地方放了。
   // 因此现在修改为ID阶段提供 rs 和rt 的值，EX阶段自己通过inst来获取imm，计算出地址。
 
+  val readEN0 = out Bool
+  val readEN1 = out Bool
+  val readAddr0 = out Bits(log2Up(GlobalConfig.regNum) bits)
+  val readAddr1 = out Bits(log2Up(GlobalConfig.regNum) bits)
+
+  def setDefaultValue(): Unit ={
+    //op:= B(0);opSel:=B(0);opRnd1:=B(0);opRnd2:=B(0);writeReg:=False;writeRegAddr:=False;
+    elements.foreach(a=> {
+      if(a._1.indexOf("read")==0){
+
+      }else{
+        a._2 match {
+          case bits: Bits => bits := B(0)
+          case bool: Bool => bool := False
+          case _ =>
+        }
+      }
+
+    }
+    )
+  }
 }
 
 case class INST(bits:Bits){
@@ -145,18 +166,24 @@ class ID extends Component{
 
   def <>(regs: RegHeap): Unit = regHeap <> regs.readPort
   def <>(ex:EX): Unit =exBack <> ex.exOut
-  def <>(mem:MEM): Unit  = memBack <> mem.memOut
-  def <>(wb:WB): Unit  = wbBack <> wb.wbOut
+  //def <>(mem:MEM): Unit  = memBack <> mem.memOut
+  //def <>(wb:WB): Unit  = wbBack <> wb.wbOut
   def <>(pc:PC): Unit  = pcPort <> pc.writePort
 
   val lastStage: IFOut = new IFOut().flip()
   val idOut= new IDOut
+
+  idOut.readEN0 := regHeap.readEns(0)
+  idOut.readEN1 := regHeap.readEns(1)
+  idOut.readAddr0 := regHeap.readAddrs(0)
+  idOut.readAddr1 := regHeap.readAddrs(1)
 
   def JMP(target:Bits)={
     //val newPC = inst.immI.asSInt.resize(GlobalConfig.dataBitsWidth)+lastStage.pc.asSInt+1
     pcPort.writeEN := True
     pcPort.writeData := target.resized
   }
+
 
   val use_imma = False
 
@@ -200,9 +227,11 @@ class ID extends Component{
     }
   }
 
+  idOut.setDefaultValue()
+  /*
   idOut.elements.foreach(a=>{
     a._2 := (if(a._1 =="writeReg") False else B(0)) }
-  )
+  )*/
 
   reqCTRL.stateOut := StageStateEnum.ENABLE
 
@@ -235,6 +264,7 @@ class ID extends Component{
     // 还要考虑，如果指令往$0写数据，那么这个数据也是不能用的
     when(regHeap.readEns(i)){
       rnd := regHeap.readDatas(i)
+      /*
       when(exBack.writeReg && exBack.writeRegAddr===regHeap.readAddrs(i)){
         rnd := exBack.writeData
       }elsewhen(memBack.writeReg && memBack.writeRegAddr===regHeap.readAddrs(i)) {
@@ -242,6 +272,7 @@ class ID extends Component{
       }elsewhen(wbBack.writeEn && wbBack.writeAddr===regHeap.readAddrs(i)){
         rnd := wbBack.writeData
       }
+       */
     }otherwise{
       when(use_imma){
         rnd := inst.immA.resized

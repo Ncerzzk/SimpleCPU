@@ -2,7 +2,7 @@ package mylib
 
 import spinal.core._
 import spinal.lib.bus.bmb.BmbParameter.BurstAlignement.WORD
-import spinal.lib.{IMasterSlave, slave}
+import spinal.lib.{IMasterSlave, master, slave}
 
 class RegHeapReadPort(regNum:Int=32) extends Bundle with IMasterSlave {
   val readAddrs = Vec(Bits(log2Up(regNum) bits),2)
@@ -33,6 +33,8 @@ object RegWriteType extends SpinalEnum{
 class RegHeap(regNum: Int = 32) extends  Component {
   val readPort= slave(new RegHeapReadPort)
   val writePort = slave(new RegHeapWritePort)
+
+  val bypassBack = master(new RegHeapWritePort)
 
   val heap = Vec(Reg(Bits(GlobalConfig.dataBitsWidth)).init(0),regNum)
 
