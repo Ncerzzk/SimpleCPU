@@ -16,7 +16,7 @@ object READ_REG1_ADDR extends Actions
 object INST_OP  extends Actions
 object INST_OPSEL extends Actions
 object BRANCH_CONDITION extends Actions
-object BRANCH_OPRND2 extends Actions // 只需要设置2，因为OPRN1默认都是寄存器的值
+//object BRANCH_OPRND2 extends Actions // 只需要设置2，因为OPRN1默认都是寄存器的值
 object WRITE_PC extends Actions
 object BRANCH_TARGET extends Actions
 object IMMA_USE extends Actions    // 表示是否使用IMMA作为操作数2，移位运算用
@@ -108,9 +108,10 @@ object Insts{
     READ_REG1 -> True,
     READ_REG0_ADDR ->RS,
     READ_REG1_ADDR ->RT,
-    BRANCH_TARGET -> IMMI_RELATIVE,
-    BRANCH_OPRND2->1,  // 此处设置一个默认值，后面可被覆盖
-    BRANCH_CONDITION-> null
+    INST_OP->OpEnum.BRANCH
+    //BRANCH_TARGET -> IMMI_RELATIVE,
+    //BRANCH_OPRND2->1,  // 此处设置一个默认值，后面可被覆盖
+    //BRANCH_CONDITION-> null
   )
   def LActions: Map[Actions, Object] = immutable.HashMap (
     (READ_REG0 -> True),
@@ -238,8 +239,9 @@ object Insts{
   def LInsts =List(
     LB->(LActions++ HashMap(INST_OPSEL->OPLoad.LOADBYTE)),
     LW->(LActions++ HashMap(INST_OPSEL->OPLoad.LOADWORD)),
-    LH->(LActions++ HashMap(INST_OPSEL->OPLoad.LOADHWORDU)),
-
+    LH->(LActions++ HashMap(INST_OPSEL->OPLoad.LOADHWORD)),
+    LBU->(LActions++ HashMap(INST_OPSEL->OPLoad.LOADBYTEU)),
+    LHU->(LActions++ HashMap(INST_OPSEL->OPLoad.LOADHWORDU)),
     MFHI->HashMap(
       INST_OP -> OpEnum.LOAD,
       INST_OPSEL -> OPLoad.MFHI,
@@ -289,20 +291,10 @@ object Insts{
   )
 
   def BInsts=List(
-    BEQ ->( BActions++HashMap(
-      BRANCH_CONDITION -> ((a:Bits, b:Bits) => a === b               )
-    )),
-    BGTZ->(BActions ++ HashMap(
-      BRANCH_CONDITION -> ((a:Bits, b:Bits)  =>a.asSInt > b.asSInt   ),
-      BRANCH_OPRND2 -> 0
-    )),
-    BLEZ->(BActions ++ HashMap(
-      BRANCH_CONDITION -> ((a:Bits, b:Bits)=> a.asSInt <= b.asSInt   ),
-      BRANCH_OPRND2 -> 0
-    )),
-    BNE ->(BActions ++ HashMap(
-      BRANCH_CONDITION -> ((a:Bits, b:Bits)=> a =/= b   )
-    ))
+    BEQ ->( BActions++HashMap(INST_OPSEL->OPBranch.BEQ)),
+    BGTZ ->( BActions++HashMap(INST_OPSEL->OPBranch.BGTZ)),
+    BLEZ ->( BActions++HashMap(INST_OPSEL->OPBranch.BLEZ)),
+    BNE ->( BActions++HashMap(INST_OPSEL->OPBranch.BNE))
   )
 
   def AllInsts= IInsts++RInsts++JInsts++LInsts++SInsts++BInsts

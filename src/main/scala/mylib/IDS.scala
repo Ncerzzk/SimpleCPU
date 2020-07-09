@@ -24,17 +24,29 @@ object InstTypeEnum extends SpinalEnum{
 
 
 object OpEnum extends SpinalEnum{
-  val LOGIC,ALU,LOAD,STORE = newElement()
+  val LOGIC,ALU,LOAD,STORE,BRANCH = newElement()
 
   val OPs = List(
     LOGIC->OPLogic,
-    ALU->OPArith
+    ALU->OPArith,
+    BRANCH->OPBranch
     // load sotre不在这里，因为load在EX中特殊处理了
   )
 }
 
 trait withFuncs{
-  val funcs:List[(SpinalEnumElement[_], (Bits, Bits) => Bits)]
+  val funcs:List[(SpinalEnumElement[_], (Bits, Bits) => _)]
+}
+object OPBranch extends SpinalEnum with withFuncs{
+  val BEQ,BGTZ,BLEZ,BNE=newElement()
+  val J,JAL,JR,JALR=newElement()
+
+  val funcs=List(
+    (BEQ,(a:Bits,b:Bits)=> a===b),
+    (BGTZ,(a:Bits,b:Bits)=> a.asSInt > b.asSInt ),
+    (BLEZ,(a:Bits,b:Bits)=> a.asSInt < b.asSInt ),
+    (BEQ,(a:Bits,b:Bits)=> a=/=b)
+  )
 }
 object OPArith extends SpinalEnum with withFuncs {
   val ADDU,SUBU = newElement()
@@ -82,7 +94,19 @@ object OPStore extends SpinalEnum{
   val STOREBYTE,STOREHWORD,STOREWORD=newElement()
 }
 
-class IDOut extends Bundle {
+trait DefaultValue{
+  def setDefaultValue[T <:Data](datas:T*): Unit ={
+    for (i<- datas){
+      i match {
+        case  bits:Bits => bits:=B(0)
+        case  bool:Bool => bool:=False
+        case  e:SpinalEnumCraft[_] => i := e.spinalEnum.elements(0).asInstanceOf[T]
+        case _ =>
+      }
+    }
+  }
+}
+class IDOut extends Bundle with DefaultValue {
   val op = out Bits( 3 bits)     // 运算类型
   val opSel = out Bits(8 bits) //运算子类型
   val opRnd1 = out Bits(GlobalConfig.dataBitsWidth)
@@ -90,6 +114,7 @@ class IDOut extends Bundle {
   val writeReg = out Bool
   val writeRegAddr = out Bits(log2Up(GlobalConfig.regNum) bits)
   val inst = out Bits(GlobalConfig.dataBitsWidth)
+  val pc = out Bits(GlobalConfig.dataBitsWidth) // 为了将分支指令以到EX，需要将pc继续往下传
   // 为了load store指令，将当前指令继续往下传
   // 为什么呢？以store指令为例，它需要计算储存地址（寄存器rs的值+imm)，还需要读出寄存器rt的值（这个值之后要写入内存）
   // 如果我们将计算地址的过程放在EX，则ID阶段需要提供的两个操作数，一个是寄存器rs中的值，一个是imm
@@ -101,22 +126,7 @@ class IDOut extends Bundle {
   val readAddr0 = out Bits(log2Up(GlobalConfig.regNum) bits)
   val readAddr1 = out Bits(log2Up(GlobalConfig.regNum) bits)
 
-  def setDefaultValue(): Unit ={
-    //op:= B(0);opSel:=B(0);opRnd1:=B(0);opRnd2:=B(0);writeReg:=False;writeRegAddr:=False;
-    elements.foreach(a=> {
-      if(a._1.indexOf("read")==0){
 
-      }else{
-        a._2 match {
-          case bits: Bits => bits := B(0)
-          case bool: Bool => bool := False
-          case _ =>
-        }
-      }
-
-    }
-    )
-  }
 }
 
 case class INST(bits:Bits){
@@ -155,35 +165,40 @@ case class INST(bits:Bits){
 class ID extends Component{
 
   val regHeap: RegHeapReadPort = master(new RegHeapReadPort)
+  val idOut= new IDOut
 
-  val exBack: EXOut = new EXOut().flip()
-  val memBack: MEMOut = new MEMOut().flip()
-  val wbBack: RegHeapWritePort = slave(new RegHeapWritePort)
-
-  val pcPort: PCPort = master(new PCPort)
-
-  val reqCTRL: StageCTRLBundle = master(new StageCTRLBundle)
+  val lastInstInfo = new Bundle{
+    val op = in Bits(idOut.op.getBitsWidth bits)
+    val opsel = in Bits(idOut.opSel.getBitsWidth bits)
+    val writeAddr = in Bits(idOut.writeRegAddr.getBitsWidth bits)
+  }
+  val reqCTRL: StageCTRLReqBundle = master(new StageCTRLReqBundle)
 
   def <>(regs: RegHeap): Unit = regHeap <> regs.readPort
-  def <>(ex:EX): Unit =exBack <> ex.exOut
-  //def <>(mem:MEM): Unit  = memBack <> mem.memOut
-  //def <>(wb:WB): Unit  = wbBack <> wb.wbOut
-  def <>(pc:PC): Unit  = pcPort <> pc.writePort
+
+  def <>(ex:EX): Unit = {
+    lastInstInfo.op <> ex.backToID.nowExOp
+    lastInstInfo.opsel <> ex.backToID.nowExOpSel
+    lastInstInfo.writeAddr <> ex.backToID.writeRegAddr
+  }
+
 
   val lastStage: IFOut = new IFOut().flip()
-  val idOut= new IDOut
+
 
   idOut.readEN0 := regHeap.readEns(0)
   idOut.readEN1 := regHeap.readEns(1)
   idOut.readAddr0 := regHeap.readAddrs(0)
   idOut.readAddr1 := regHeap.readAddrs(1)
 
-  def JMP(target:Bits)={
-    //val newPC = inst.immI.asSInt.resize(GlobalConfig.dataBitsWidth)+lastStage.pc.asSInt+1
-    pcPort.writeEN := True
-    pcPort.writeData := target.resized
+  {
+    import idOut._
+    idOut.setDefaultValue(op,opSel,opRnd2,opRnd1,writeReg,writeRegAddr)
+    pc := lastStage.pc
+    idOut.inst := lastStage.inst
   }
 
+  reqCTRL.req := StageCTRLReqEnum.NORMAL
 
   val use_imma = False
 
@@ -208,6 +223,7 @@ class ID extends Component{
           }else if(action == INST_OPSEL){
             idOut.opSel := argument.asInstanceOf[SpinalEnumElement[_]].asBits.resized
           }else if(action == BRANCH_CONDITION){
+            /*
             val oprnd2 = if(i._2.getOrElse(BRANCH_OPRND2,1)==0) B("32'h0") else idOut.opRnd2
             val JMPOrNot: Bool = argument.asInstanceOf[(Bits,Bits)=>Bool](idOut.opRnd1,oprnd2)
             when(JMPOrNot){
@@ -217,8 +233,11 @@ class ID extends Component{
                 case REG => idOut.opRnd1
                 case _ => B(0).resize(GlobalConfig.dataBitsWidth)
               })
-              JMP(target)
+              //pcPort.JMP(target)
+              //JMP(target)
             }
+
+             */
           }else if(action == IMMA_USE){
               use_imma := True
           }
@@ -227,16 +246,14 @@ class ID extends Component{
     }
   }
 
-  idOut.setDefaultValue()
+
   /*
   idOut.elements.foreach(a=>{
     a._2 := (if(a._1 =="writeReg") False else B(0)) }
   )*/
 
-  reqCTRL.stateOut := StageStateEnum.ENABLE
-
-  pcPort.writeEN :=False
-  pcPort.writeData := 0
+  //pcPort.writeEN :=False
+  //pcPort.writeData := 0
 
   regHeap.readAddrs(0) := 0
   regHeap.readAddrs(1) := 0
@@ -254,6 +271,12 @@ class ID extends Component{
     inst.immI.resize(GlobalConfig.dataBitsWidth)|
     inst.immI.asSInt.resize(GlobalConfig.dataBitsWidth).asBits
 
+
+  when(lastInstInfo.op===OpEnum.LOAD.asBits.resized){
+    when(lastInstInfo.writeAddr === regHeap.readAddrs(0) || lastInstInfo.writeAddr===regHeap.readAddrs(1)){
+      reqCTRL.req := StageCTRLReqEnum.IDSTALL
+    }
+  }
   doDecode(Insts.AllInsts)
 
 

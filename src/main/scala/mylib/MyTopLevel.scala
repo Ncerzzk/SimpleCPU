@@ -80,3 +80,12 @@ object MyTopLevelVerilogWithCustomConfig {
     //MySpinalConfig.generateVerilog(new MyTopLevel)
   }
 }
+
+object GenEX {
+  def main(args: Array[String]) {
+    MySpinalConfig.generateVerilog(new EX).printPruned()
+
+    //SpinalVerilog(new MyTop2)
+    //MySpinalConfig.generateVerilog(new MyTopLevel)
+  }
+}

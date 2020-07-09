@@ -25,18 +25,7 @@ class Mut extends Component{
   io.outdata := (io.data1 * io.data2).asUInt
 }
 
-class test extends Component{
-  val op1,op2 = in Bits(32 bits)
-  val sel = in Bits(3 bits)
-  val o = out Bits(32 bits)
-  o:=sel.mux(
-    1->(op1 & op2),
-    2->(op1 | op2),
-    3->(op1 ^ op2),
-    default-> B(0)
-  )
 
-}
 class CPU extends Component  with BusMasterContain {
 
   val ram =new Ram(GlobalConfig.ramRegNum)
@@ -56,7 +45,7 @@ class CPU extends Component  with BusMasterContain {
   val if2id = new Stage(new IFOut())
   val id = new ID()
   id <> regs
-  id <> pc_reg
+  //id <> pc_reg
   if2id.left.pc := pc_reg.io.pc
   if2id.left.inst := io.inst
   if2id.right <> id.lastStage
@@ -65,6 +54,7 @@ class CPU extends Component  with BusMasterContain {
   val id2ex = new Stage(new IDOut())
   val ex = new EX()
   id2ex <>(id.idOut,ex.lastStage)
+  ex <> pc_reg
 
   val ex2mem = new Stage(new EXOut())
   val mem = new MEM()
@@ -83,8 +73,9 @@ class CPU extends Component  with BusMasterContain {
   //id <> mem
   //id <> wb
 
-  stageCTRL <> List(if2id.ctrl,id2ex.ctrl,ex2mem.ctrl)
-  stageCTRL.reqFromID <> id.reqCTRL
+  stageCTRL <> List(pc_reg.ctrl,if2id.ctrl,id2ex.ctrl,ex2mem.ctrl)
+  stageCTRL <> id
+  stageCTRL <> ex
 
   ram.io <> mem.ramPort
 }
@@ -94,7 +85,7 @@ class SOC extends Component {
   val cpu = new CPU
   val rom = new InstRom
 
-  romInitTestBack2gap()
+  romInitTestB()
   rom.io.inst<> cpu.io.inst
   rom.io.en <> cpu.io.romEn
   rom.io.addr<> cpu.io.romAddr
@@ -183,7 +174,6 @@ class SOC extends Component {
 
   def romInitTestB():Unit = {
     /*
-    nop
     addiu $1, $0, 0x1100
     b 2
     addiu $2, $0, 0x0111
@@ -253,6 +243,17 @@ class SOC extends Component {
       B("32'ha0010000"),B("32'ha4020002"),B("32'hac030004"),
       B("32'h8c040000"),B("32'h8c050004")
     )
+    val romInitVal=inits++List.fill(GlobalConfig.instRomCellNum-inits.length)(B(0))
+    rom.init(romInitVal)
+  }
+
+  def romInitTestLoadADD():Unit = {
+    /*
+    nop
+	LBU $1,01($0)
+	addiu $2,$1,100
+     */
+    val inits=List(B(0),B("32'h90010001"),B("32'h24220064"))
     val romInitVal=inits++List.fill(GlobalConfig.instRomCellNum-inits.length)(B(0))
     rom.init(romInitVal)
   }

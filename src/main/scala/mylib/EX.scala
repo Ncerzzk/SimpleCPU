@@ -13,18 +13,36 @@ class EXOut extends Bundle{
   val opSel = out Bits(8 bits) //运算子类型
 
   val loadStoreAddr = out Bits(GlobalConfig.dataBitsWidth) // 用于存放load store指令中，计算完的地址
+
   val writeRegType = out(RegWriteType())          // 增加用于 Loadhi loadlo
 }
 
 class EX extends Component{
   val lastStage= new IDOut().flip()
   val exOut = new EXOut
+
+  val backToID = new Bundle{
+    val nowExOp = out Bits(lastStage.op.getBitsWidth bits)
+    val nowExOpSel = out Bits(lastStage.opSel.getBitsWidth bits)
+    val writeRegAddr = out Bits(lastStage.writeRegAddr.getBitsWidth bits)
+  }
+
   val hi = Reg(Bits(GlobalConfig.dataBitsWidth)).init(0)
   val lo = Reg(Bits(GlobalConfig.dataBitsWidth)).init(0)
 
   val ex2memBack = new EXOut().flip()
   val regBack = slave(new RegHeapWritePort)
+  val pcPort = master(new PCPort)
+  val reqCTRL: StageCTRLReqBundle = master(new StageCTRLReqBundle)
 
+  pcPort.setDefaultValue(pcPort.writeEN,pcPort.writeData)
+  reqCTRL.req := StageCTRLReqEnum.NORMAL
+
+  backToID.nowExOp := lastStage.op
+  backToID.nowExOpSel := lastStage.opSel
+  backToID.writeRegAddr := lastStage.writeRegAddr
+
+  def <>(pc:PC): Unit  = pcPort <> pc.writePort
   def <>(ex2mem:Stage[EXOut]): Unit ={
     ex2mem.right <> ex2memBack
   }
@@ -62,14 +80,6 @@ class EX extends Component{
     }
   }
 
-  //val LOGIC = for ((opsel,func) <- OPLogic.funcs)
-    //yield opsel.asBits.resize(lastStage.opSel.getWidth)->func(oprnd1,oprnd2)
-/*
-  exOut.writeData := lastStage.op.mux(
-    OpEnum.ALU.asBits.resize(lastStage.op.getWidth)->lastStage.opSel.muxList(ALU),
-    OpEnum.LOGIC.asBits.resize(lastStage.op.getWidth)->lastStage.opSel.muxList(LOGIC)
-  )
-  */
   val inst=INST(lastStage.inst)
   when(lastStage.op === OpEnum.LOAD.asBits.resized || lastStage.op === OpEnum.STORE.asBits.resized){
     exOut.loadStoreAddr := (oprnd1.asSInt + inst.immI.asSInt.resize(GlobalConfig.dataBitsWidth)).asBits
@@ -91,13 +101,20 @@ class EX extends Component{
   }otherwise {
     for (i <- OpEnum.OPs) {
       when(lastStage.op === i._1.asBits.resize(lastStage.op.getWidth)) {
+
         for ((opsel, func) <- i._2.funcs) {
           when(lastStage.opSel === opsel.asBits.resize(lastStage.opSel.getWidth)) {
             if (opsel == OPArith.MUL || opsel == OPArith.MULU) {
-              hi := func(oprnd1, oprnd2).takeHigh(GlobalConfig.dataBitsWidth.value)
-              lo := func(oprnd1, oprnd2).take(GlobalConfig.dataBitsWidth.value)
-            } else {
-              exOut.writeData := func(oprnd1, oprnd2)
+              hi := func(oprnd1, oprnd2).asInstanceOf[Bits].takeHigh(GlobalConfig.dataBitsWidth.value)
+              lo := func(oprnd1, oprnd2).asInstanceOf[Bits].take(GlobalConfig.dataBitsWidth.value)
+            }else if(i._1 == OpEnum.BRANCH) {
+              when(func(oprnd1,oprnd2).asInstanceOf[Bool]){
+                val target= (inst.immI.asSInt.resize(GlobalConfig.dataBitsWidth)+lastStage.pc.asSInt+1).asBits
+                pcPort.JMP(target)
+                reqCTRL.req := StageCTRLReqEnum.IFFLUSH
+              }
+            }else{
+              exOut.writeData := func(oprnd1, oprnd2).asInstanceOf[Bits]
             }
           }
         }

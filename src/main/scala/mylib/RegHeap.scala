@@ -34,12 +34,14 @@ class RegHeap(regNum: Int = 32) extends  Component {
   val readPort= slave(new RegHeapReadPort)
   val writePort = slave(new RegHeapWritePort)
 
-  val bypassBack = master(new RegHeapWritePort)
+  val bypassBack = master(Reg(new RegHeapWritePort))
 
   val heap = Vec(Reg(Bits(GlobalConfig.dataBitsWidth)).init(0),regNum)
 
   readPort.readDatas(0) := 0
   readPort.readDatas(1) := 0
+
+  bypassBack := writePort
 
   when(writePort.writeEn && (writePort.writeAddr =/= B(0))){
     switch(writePort.writeType){
