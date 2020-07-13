@@ -87,6 +87,11 @@ class StageCTRL extends Component{
     slaves(0).stateOut := StageStateEnum.STALL
     slaves(1).stateOut := StageStateEnum.STALL
     slaves(2).stateOut := StageStateEnum.FLUSH
+  }elsewhen(req === StageCTRLReqEnum.EXSTALL){
+    slaves(0).stateOut := StageStateEnum.STALL
+    slaves(1).stateOut := StageStateEnum.STALL
+    slaves(2).stateOut := StageStateEnum.STALL
+    slaves(3).stateOut := StageStateEnum.FLUSH
   }
 }
 

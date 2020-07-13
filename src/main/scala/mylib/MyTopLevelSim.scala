@@ -63,4 +63,29 @@ object SocTestBasic{
   }
 }
 
+object DividerTest{
+  def main(args:Array[String]): Unit ={
+    SimConfig.withWave.compile(new Divider(32)).doSim{dut=>
+      dut.clockDomain.forkStimulus(period = 10)
+      dut.clockDomain.deassertReset()
+
+      dut.clockDomain.assertReset()
+      sleep(10)
+      dut.clockDomain.risingEdge()
+      sleep(10)
+      dut.clockDomain.deassertReset()
+      dut.clockDomain.fallingEdge()
+
+      dut.io.en #= true
+      dut.io.dividend #= 160
+      dut.io.divisor #= 3
+
+      for(i <- 0 to 40){
+        dut.clockDomain.waitSampling()
+      }
+
+    }
+  }
+}
+
 

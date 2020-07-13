@@ -20,6 +20,7 @@ object BRANCH_CONDITION extends Actions
 object WRITE_PC extends Actions
 object BRANCH_TARGET extends Actions
 object IMMA_USE extends Actions    // 表示是否使用IMMA作为操作数2，移位运算用
+object EMIT_TARGET extends Actions
 
 object RS extends Arguments
 object RT extends Arguments
@@ -29,6 +30,7 @@ object RD extends Arguments
 object IMMJ_ABSOLUTE extends Arguments  // 这两个是跳转用
 object IMMI_RELATIVE extends Arguments
 object REG  extends Arguments
+object DIVIDER  extends  Arguments
 case class RAW_BITS(b:Bits) extends Arguments
 
 
@@ -173,8 +175,10 @@ object Insts{
     SUBU -> (RActions ++ HashMap(INST_OP-> OpEnum.ALU,INST_OPSEL->OPArith.SUBU)),
     SLT ->  (RActions ++ HashMap(INST_OP-> OpEnum.ALU,INST_OPSEL->OPArith.SLT)),
     SLTU -> (RActions ++ HashMap(INST_OP-> OpEnum.ALU,INST_OPSEL->OPArith.SLTU)),
-    MULT -> (RActions ++ HashMap(INST_OP-> OpEnum.ALU,INST_OPSEL->OPArith.MUL)),
-    MULTU -> (RActions ++ HashMap(INST_OP-> OpEnum.ALU,INST_OPSEL->OPArith.MULU)),
+    MULT -> (RActions ++ HashMap(INST_OP-> OpEnum.ALU, INST_OPSEL->OPArith.MUL, WRITE_REG -> False)),
+    MULTU -> (RActions ++ HashMap(INST_OP-> OpEnum.ALU,INST_OPSEL->OPArith.MULU,WRITE_REG -> False)),
+    DIV ->(RActions ++ HashMap(INST_OP -> OpEnum.ALU,INST_OPSEL->OPArith.DIV,WRITE_REG -> False)),
+    DIVU ->(RActions ++ HashMap(INST_OP -> OpEnum.ALU,INST_OPSEL->OPArith.DIVU,WRITE_REG -> False)),
 
     SLLV -> (RActions ++ HashMap(
       INST_OP-> OpEnum.LOGIC,

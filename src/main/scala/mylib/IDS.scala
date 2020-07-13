@@ -53,6 +53,7 @@ object OPArith extends SpinalEnum with withFuncs {
   val SLT,SLTU = newElement()
   val MULU,MUL = newElement()
   val ADD,SUB =newElement()
+  val DIVU,DIV=newElement()
 
   val funcs: List[(SpinalEnumElement[_], (Bits, Bits) => Bits)] = List(
     (ADDU,(a:Bits,b:Bits)=> (a.asUInt + b.asUInt).asBits),
@@ -97,11 +98,13 @@ object OPStore extends SpinalEnum{
 trait DefaultValue{
   def setDefaultValue[T <:Data](datas:T*): Unit ={
     for (i<- datas){
-      i match {
-        case  bits:Bits => bits:=B(0)
-        case  bool:Bool => bool:=False
-        case  e:SpinalEnumCraft[_] => i := e.spinalEnum.elements(0).asInstanceOf[T]
-        case _ =>
+      if(i.isOutput){
+        i match {
+          case  bits:Bits => bits:=B(0)
+          case  bool:Bool => bool:=False
+          case  e:SpinalEnumCraft[_] => e.asInstanceOf[SpinalEnumCraft[e.spinalEnum.type]] := e.spinalEnum.elements(0)
+          case _ =>
+        }
       }
     }
   }
@@ -126,7 +129,7 @@ class IDOut extends Bundle with DefaultValue {
   val readAddr0 = out Bits(log2Up(GlobalConfig.regNum) bits)
   val readAddr1 = out Bits(log2Up(GlobalConfig.regNum) bits)
 
-
+  val divEn = out Bool
 }
 
 case class INST(bits:Bits){
@@ -171,6 +174,7 @@ class ID extends Component{
     val op = in Bits(idOut.op.getBitsWidth bits)
     val opsel = in Bits(idOut.opSel.getBitsWidth bits)
     val writeAddr = in Bits(idOut.writeRegAddr.getBitsWidth bits)
+    val divBusy = in Bool
   }
   val reqCTRL: StageCTRLReqBundle = master(new StageCTRLReqBundle)
 

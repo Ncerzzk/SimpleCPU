@@ -81,9 +81,9 @@ object MyTopLevelVerilogWithCustomConfig {
   }
 }
 
-object GenEX {
+object GenDivder {
   def main(args: Array[String]) {
-    MySpinalConfig.generateVerilog(new EX).printPruned()
+    MySpinalConfig.generateVerilog(new Divider(4)).printPruned()
 
     //SpinalVerilog(new MyTop2)
     //MySpinalConfig.generateVerilog(new MyTopLevel)

@@ -33,6 +33,7 @@ object RegWriteType extends SpinalEnum{
 class RegHeap(regNum: Int = 32) extends  Component {
   val readPort= slave(new RegHeapReadPort)
   val writePort = slave(new RegHeapWritePort)
+  val writePort2 = slave(new RegHeapWritePort)
 
   val bypassBack = master(Reg(new RegHeapWritePort))
 
