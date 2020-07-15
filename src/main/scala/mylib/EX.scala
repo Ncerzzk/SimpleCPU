@@ -5,62 +5,6 @@ import spinal.core._
 import spinal.lib.{master, slave}
 import spinal.lib.fsm._
 
-class Divider(bitNum:Int) extends Component {
-
-  val io = new Bundle{
-    val dividend = in UInt(bitNum bits)
-    val divisor = in UInt(bitNum bits)
-    val en = in Bool
-    val sign = in Bool
-
-    val quotient = out UInt(bitNum bits)
-    val remainder = out UInt (bitNum bits)
-    val ok = out Bool
-    val busy = out Bool
-  }
-
-  io.ok:=False
-  io.quotient := U(0)
-  io.remainder := U(0)
-  io.busy := False
-
-  val remQuoReg = Reg(UInt(bitNum*2 bits)).init(0)
-
-  val fsm = new StateMachine{
-    val idle:State = new State with EntryPoint{
-      whenIsActive{
-        when(io.en){
-          goto(caculting)
-        }
-      }
-    }
-    val caculting:StateDelay = new StateDelay(bitNum+1){
-      onEntry{
-        remQuoReg := io.dividend.resized
-      }
-      whenCompleted{
-        io.quotient := remQuoReg.asBits.take(bitNum).asUInt
-        io.remainder := remQuoReg.asBits.takeHigh(bitNum).asUInt
-        io.ok := True
-        goto(idle)
-      }
-      onExit{
-        remQuoReg := U(0)
-      }
-    }
-    caculting.whenIsActive{
-      val a = remQuoReg |<<1
-      val high = a.asBits.takeHigh(bitNum).asUInt
-      val subResult=high - io.divisor
-      io.busy := True
-      when(subResult.msb===False){
-        remQuoReg := (subResult.asBits ## (a.asBits.take(bitNum) | B(1,bitNum bits))).asUInt
-      }otherwise{
-        remQuoReg := a
-      }
-    }
-  }
-}
 
 class EXOut extends Bundle with DefaultValue {
   val writeReg = out Bool
@@ -101,6 +45,9 @@ class EX extends Component{
   divider.io.divisor := oprnd2.asUInt
   divider.io.en := lastStage.divEn
   divider.io.sign := False
+
+  val divder_ok = Bool
+  divder_ok :=divider.io.ok
 
   pcPort.setDefaultValue(pcPort.writeEN,pcPort.writeData)
   reqCTRL.req := StageCTRLReqEnum.NORMAL
@@ -174,9 +121,12 @@ class EX extends Component{
               hi := func(oprnd1, oprnd2).asInstanceOf[Bits].takeHigh(GlobalConfig.dataBitsWidth.value)
               lo := func(oprnd1, oprnd2).asInstanceOf[Bits].take(GlobalConfig.dataBitsWidth.value)
             }else if(opsel == OPArith.DIV || opsel == OPArith.DIVU){
-              when(divider.io.ok){
-                hi := divider.io.quotient.asBits
-                lo := divider.io.remainder.asBits
+              if(opsel == OPArith.DIV){
+                divider.io.sign := True
+              }
+              when(divder_ok){
+                lo := divider.io.quotient.asBits
+                hi := divider.io.remainder.asBits
               }otherwise{
                 reqCTRL.req := StageCTRLReqEnum.EXSTALL
               }
@@ -202,81 +152,3 @@ class EX extends Component{
 }
 
 
-class MEMOut extends Bundle{
-  val writeReg = out Bool
-  val writeRegAddr = out Bits(log2Up(GlobalConfig.regNum) bits)
-  val writeData = out Bits(GlobalConfig.dataBitsWidth)
-
-  val writeRegType = out(RegWriteType())
-}
-
-class MEM extends Component{
-  val lastStage = new EXOut().flip()
-
-  //val memOut = new MEMOut
-
-  val ramPort = Ram.masterPort(GlobalConfig.ramRegNum)
-
-  val memOut= master(new RegHeapWritePort)
-
-  def <>(regHeap: RegHeap)={
-    memOut <> regHeap.writePort
-  }
-
-  ramPort.writeData := B(0).resized
-  ramPort.writeEn := False
-  ramPort.addr := lastStage.loadStoreAddr.resized
-  ramPort.operateType := Ram.RamOperateType.WORD
-
-  memOut.writeEn := lastStage.writeReg
-  memOut.writeAddr := lastStage.writeRegAddr
-  memOut.writeData := lastStage.writeData
-  memOut.writeType := lastStage.writeRegType  // 继续往WB传
-
-  when(lastStage.op === OpEnum.LOAD.asBits.resized){
-    //ramPort.addr := lastStage.loadStoreAddr.resized
-    val rawData = ramPort.readData
-    // 这里判断一下读取数据的符号位如何拓展
-    when(lastStage.opSel === OPLoad.LOADHWORD.asBits.resized){
-      memOut.writeData := rawData.take(16).asSInt.resize(32 bits).asBits
-    }elsewhen(lastStage.opSel === OPLoad.LOADBYTE.asBits.resized){
-      memOut.writeData := rawData.take(8).asSInt.resize(32 bits).asBits
-    }otherwise{
-      memOut.writeData := ramPort.readData //默认都是无符号拓展，因此直接赋值即可
-    }
-
-    ramPort.operateType assignFromBits lastStage.opSel.mux(
-      OPLoad.LOADWORD.asBits.resized  -> Ram.RamOperateType.WORD.asBits,
-      OPLoad.LOADHWORD.asBits.resized  -> Ram.RamOperateType.HWORD.asBits,
-      OPLoad.LOADHWORDU.asBits.resized  -> Ram.RamOperateType.HWORD.asBits,
-      OPLoad.LOADBYTE.asBits.resized   -> Ram.RamOperateType.BYTE.asBits,
-      OPLoad.LOADBYTEU.asBits.resized   -> Ram.RamOperateType.BYTE.asBits,
-      default->Ram.RamOperateType.WORD.asBits
-    )
-  }elsewhen(lastStage.op===OpEnum.STORE.asBits.resized){
-    ramPort.writeData := lastStage.writeData
-    ramPort.writeEn := True
-    ramPort.operateType assignFromBits lastStage.opSel.mux(
-      OPStore.STOREBYTE.asBits.resized  -> Ram.RamOperateType.BYTE.asBits,
-      OPStore.STOREHWORD.asBits.resized  -> Ram.RamOperateType.HWORD.asBits,
-      OPStore.STOREWORD.asBits.resized  -> Ram.RamOperateType.WORD.asBits,
-      default->Ram.RamOperateType.WORD.asBits
-    )
-  }
-}
-/*
-class WB extends Component{
-  val lastStage= new MEMOut().flip()
-
-  val wbOut= master(new RegHeapWritePort)
-
-  wbOut.writeAddr := lastStage.writeRegAddr
-  wbOut.writeData := lastStage.writeData
-  wbOut.writeEn := lastStage.writeReg
-  wbOut.writeType := lastStage.writeRegType
-
-  def <>(regHeap: RegHeap)={
-    wbOut <> regHeap.writePort
-  }
-}
-*/

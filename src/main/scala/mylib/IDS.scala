@@ -65,7 +65,10 @@ object OPArith extends SpinalEnum with withFuncs {
     (SLT, (a:Bits, b:Bits) => (a.asSInt < b.asSInt)?B(1,32 bits)|B(0)),
 
     (MULU,(a:Bits,b:Bits) => (a.asUInt*b.asUInt).asBits),
-    (MUL,(a:Bits,b:Bits) => (a.asSInt*b.asSInt).asBits)
+    (MUL,(a:Bits,b:Bits) => (a.asSInt*b.asSInt).asBits),
+
+    (DIV,(a:Bits,b:Bits) => B(0)),   // DIV 和DIVU的函数不会用到，但是需要在funcs增加两项，否则EX中无法执行DIV和DIVU
+    (DIVU,(a:Bits,b:Bits) => B(0))
   )
 }
 
@@ -102,6 +105,8 @@ trait DefaultValue{
         i match {
           case  bits:Bits => bits:=B(0)
           case  bool:Bool => bool:=False
+          case  uint:UInt => uint:=U(0)
+          case  sint:SInt => sint:=S(0)
           case  e:SpinalEnumCraft[_] => e.asInstanceOf[SpinalEnumCraft[e.spinalEnum.type]] := e.spinalEnum.elements(0)
           case _ =>
         }
@@ -174,7 +179,6 @@ class ID extends Component{
     val op = in Bits(idOut.op.getBitsWidth bits)
     val opsel = in Bits(idOut.opSel.getBitsWidth bits)
     val writeAddr = in Bits(idOut.writeRegAddr.getBitsWidth bits)
-    val divBusy = in Bool
   }
   val reqCTRL: StageCTRLReqBundle = master(new StageCTRLReqBundle)
 
@@ -197,7 +201,7 @@ class ID extends Component{
 
   {
     import idOut._
-    idOut.setDefaultValue(op,opSel,opRnd2,opRnd1,writeReg,writeRegAddr)
+    idOut.setDefaultValue(op,opSel,opRnd2,opRnd1,writeReg,writeRegAddr,divEn)
     pc := lastStage.pc
     idOut.inst := lastStage.inst
   }
@@ -226,7 +230,9 @@ class ID extends Component{
             idOut.op := argument.asInstanceOf[SpinalEnumElement[_]].asBits.resized
           }else if(action == INST_OPSEL){
             idOut.opSel := argument.asInstanceOf[SpinalEnumElement[_]].asBits.resized
-          }else if(action == BRANCH_CONDITION){
+          }else if(action ==DIVIDER_USE){
+            idOut.divEn := True
+          } else if(action == BRANCH_CONDITION){
             /*
             val oprnd2 = if(i._2.getOrElse(BRANCH_OPRND2,1)==0) B("32'h0") else idOut.opRnd2
             val JMPOrNot: Bool = argument.asInstanceOf[(Bits,Bits)=>Bool](idOut.opRnd1,oprnd2)

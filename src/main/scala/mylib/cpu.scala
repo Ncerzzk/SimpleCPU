@@ -85,7 +85,7 @@ class SOC extends Component {
   val cpu = new CPU
   val rom = new InstRom
 
-  romInitTestB()
+  romInitTestDIV()
   rom.io.inst<> cpu.io.inst
   rom.io.en <> cpu.io.romEn
   rom.io.addr<> cpu.io.romAddr
@@ -254,6 +254,30 @@ class SOC extends Component {
 	addiu $2,$1,100
      */
     val inits=List(B(0),B("32'h90010001"),B("32'h24220064"))
+    val romInitVal=inits++List.fill(GlobalConfig.instRomCellNum-inits.length)(B(0))
+    rom.init(romInitVal)
+  }
+
+  def romInitTestDIVU():Unit={
+    /*
+    nop
+    addiu $1,160
+	  addiu $2,3
+	  divu  $1,$2
+     */
+    val inits=List(B(0),B("32'h242100a0"),B("32'h24420003"),B("32'h0022001b"),B("32'h242100a0"))
+    val romInitVal=inits++List.fill(GlobalConfig.instRomCellNum-inits.length)(B(0))
+    rom.init(romInitVal)
+  }
+
+  def romInitTestDIV():Unit={
+    /*
+    nop
+    addiu $1,160
+	  addiu $2,3
+	  divu  $1,$2
+     */
+    val inits=List(B(0),B("32'h2021ff60"),B("32'h24420003"),B("32'h0022001a"),B("32'h242100a0"))
     val romInitVal=inits++List.fill(GlobalConfig.instRomCellNum-inits.length)(B(0))
     rom.init(romInitVal)
   }
