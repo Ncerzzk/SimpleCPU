@@ -16,6 +16,8 @@ class EXOut extends Bundle with DefaultValue {
   val loadStoreAddr = out Bits(GlobalConfig.dataBitsWidth) // 用于存放load store指令中，计算完的地址
 
   val writeRegType = out(RegWriteType())          // 增加用于 Loadhi loadlo
+
+  val instIsDelaySlot = out Bool
 }
 
 class EX extends Component{
@@ -41,6 +43,14 @@ class EX extends Component{
 
   val divider = new Divider(GlobalConfig.dataBitsWidth.value)
 
+  val nextInstIsDelaySlot = Reg(Bool).init(False).default(False) // 指示下一条指令是否是延时槽指令
+
+  when(nextInstIsDelaySlot){
+    exOut.instIsDelaySlot := True
+  }otherwise{
+    exOut.instIsDelaySlot := False
+  }
+
   divider.io.dividend := oprnd1.asUInt
   divider.io.divisor := oprnd2.asUInt
   divider.io.en := lastStage.divEn
@@ -64,7 +74,6 @@ class EX extends Component{
   def <>(reg:RegHeap): Unit ={
     regBack <> reg.bypassBack
   }
-
 
   {
     import exOut._
@@ -136,6 +145,7 @@ class EX extends Component{
                 val target= (inst.immI.asSInt.resize(GlobalConfig.dataBitsWidth)+lastStage.pc.asSInt+1).asBits
                 pcPort.JMP(target)
                 reqCTRL.req := StageCTRLReqEnum.IFFLUSH
+                nextInstIsDelaySlot := True // 指定下一条指令是延迟槽指令，在异常处理中会用到
               }
             }else{
               exOut.writeData := func(oprnd1, oprnd2).asInstanceOf[Bits]

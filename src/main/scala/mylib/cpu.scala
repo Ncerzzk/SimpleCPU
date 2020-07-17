@@ -9,6 +9,7 @@ object GlobalConfig{
   val regNum = 32
   val instRomCellNum:Int = 16
   val ramRegNum = 64
+  val vectorStartAddress = 0x20
 }
 
 object FlowStateEnum extends SpinalEnum(defaultEncoding = binarySequential) with NeedNBits{

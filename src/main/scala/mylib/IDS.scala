@@ -256,15 +256,6 @@ class ID extends Component{
     }
   }
 
-
-  /*
-  idOut.elements.foreach(a=>{
-    a._2 := (if(a._1 =="writeReg") False else B(0)) }
-  )*/
-
-  //pcPort.writeEN :=False
-  //pcPort.writeData := 0
-
   regHeap.readAddrs(0) := 0
   regHeap.readAddrs(1) := 0
   regHeap.readEns(0) := False
